@@ -146,7 +146,7 @@ class MeetingBloc extends Bloc<MeetingEvent, MeetingState> implements MeetingSyn
   }
 
   @override
-  void onError(String error) {
+  void onSyncError(String error) {
     add(MeetingFailedEvent(error));
   }
 

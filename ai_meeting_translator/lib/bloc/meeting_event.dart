@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:equatable/equatable';
+import 'package:equatable/equatable.dart';
 
 abstract class MeetingEvent extends Equatable {
   const MeetingEvent();

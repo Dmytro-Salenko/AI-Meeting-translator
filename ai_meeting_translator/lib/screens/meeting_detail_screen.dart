@@ -274,8 +274,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
       ],
     );
   }
-    );
-  }
+
 
   Widget _buildSummaryTab() {
     return SingleChildScrollView(

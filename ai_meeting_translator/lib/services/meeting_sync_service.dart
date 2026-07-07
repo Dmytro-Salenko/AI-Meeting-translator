@@ -9,7 +9,7 @@ abstract class MeetingSyncDelegate {
   void onTranslationReceived(String text);
   void onNetworkStatusChanged(bool isConnected);
   void onSyncFinished();
-  void onError(String error);
+  void onSyncError(String error);
 }
 
 class MeetingSyncService {
