@@ -90,11 +90,19 @@ class _MeetingScreenState extends State<MeetingScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        // Only auto-scroll to the bottom if the user is already near the bottom (within 120 pixels threshold).
+        // This allows them to scroll back and read earlier translation text without focus hijack.
+        final double maxScroll = _scrollController.position.maxScrollExtent;
+        final double currentScroll = _scrollController.offset;
+        const double threshold = 120.0;
+        
+        if (maxScroll - currentScroll <= threshold) {
+          _scrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
   }
@@ -276,37 +284,37 @@ class _MeetingScreenState extends State<MeetingScreen> {
               ),
             ),
 
-            // 4. Bottom Stop Meeting Button
+            // 4. Bottom Stop Meeting Button (Slightly smaller & centered)
             Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 48.0, vertical: 16.0),
               child: GestureDetector(
                 onTap: () {
                   Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
                 },
                 child: Container(
-                  height: 64,
+                  height: 52, // Made smaller (52 instead of 64)
                   decoration: BoxDecoration(
                     color: const Color(0xFF1C1215), // Dark red tinted box
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.15)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 16,
-                        height: 16,
+                        width: 14,
+                        height: 14,
                         decoration: BoxDecoration(
                           color: const Color(0xFFEF4444),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       const Text(
                         "Stop Meeting",
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 16.0,
+                          fontSize: 15.0,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFFEF4444),
                         ),
