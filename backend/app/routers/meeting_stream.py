@@ -295,3 +295,134 @@ async def delete_full_meeting(
         "message": f"Meeting {meeting_id} completely destroyed and erased from storage and database."
     }
 
+
+@router.get("/meetings/search")
+async def search_meetings(
+    q: str,
+    translation_provider: BaseTranslationProvider = Depends(get_translation_provider)
+):
+    """
+    Semantic AI Search Agent.
+    1. Uses OpenRouter to parse user natural language intent.
+    2. Builds custom query filters based on parsed intent.
+    3. Searches DB / Mock DB and compiles timestamped results for the player.
+    """
+    if not q.strip():
+        return {"intent": {}, "results": [], "ai_summary_answer": None}
+
+    current_time_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    current_date_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Call OpenRouter to parse intent (Zero Data Retention)
+    # Using configured model (e.g. google/gemini-2.5-flash)
+    from app.core.config import settings
+    api_key = settings.OPENROUTER_API_KEY
+    model = "google/gemini-2.5-flash" # Use fast/cheap flash model for parsing
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/dimasalenko/ai-meeting-translator",
+        "X-Title": "AI Meeting Translator",
+        "X-Provider-Privacy": "no-store"
+    }
+
+    system_prompt = (
+        f"You are a search query intent parser. Today's date and time is {current_time_str}. "
+        "Analyze the user's search query and extract structured filter parameters. "
+        "Return ONLY a JSON object with this structure:\n"
+        "{\n"
+        "  \"target_date\": \"YYYY-MM-DD or null (calculate relative dates like 'yesterday' or 'last monday')\",\n"
+        "  \"speaker_name\": \"string of speaker name mentioned, or null\",\n"
+        "  \"search_keyword\": \"main meaning keyword for full-text search, or null\",\n"
+        "  \"intent_type\": \"'summary' | 'proposals' | 'decisions' | 'general_text'\"\n"
+        "}"
+    )
+
+    parsed_intent = {
+        "target_date": None,
+        "speaker_name": None,
+        "search_keyword": q,
+        "intent_type": "general_text"
+    }
+
+    # Call OpenRouter API
+    try:
+        import httpx
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Query: {q}"}
+            ],
+            "response_format": {"type": "json_object"},
+            "provider": {"data_collection": "deny"}
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+            if response.status_code == 200:
+                raw_json = response.json()["choices"][0]["message"]["content"].strip()
+                parsed_intent = json.loads(raw_json)
+    except Exception as e:
+        print(f"Error parsing search intent with OpenRouter: {e}")
+
+    results = []
+    ai_summary_answer = None
+
+    # Query mock database based on parsed intent
+    target_date = parsed_intent.get("target_date")
+    speaker_name = parsed_intent.get("speaker_name")
+    keyword = parsed_intent.get("search_keyword")
+    intent_type = parsed_intent.get("intent_type")
+
+    async with db_lock:
+        for meeting_id, meeting in MOCK_DB.items():
+            # Date filter (if parsed)
+            if target_date and meeting.get("date") != target_date:
+                # Handle string date matching
+                m_date = str(meeting.get("date"))
+                if target_date not in m_date:
+                    continue
+
+            # Route by intent type
+            if intent_type == "summary" and "summary" in meeting:
+                ai_summary_answer = meeting["summary"].get("brief_content")
+                continue
+                
+            elif intent_type == "decisions" and "summary" in meeting:
+                decisions = meeting["summary"].get("key_decisions", [])
+                if decisions:
+                    ai_summary_answer = "Основные решения:\n" + "\n".join(decisions)
+                continue
+
+            # Search in segments
+            segments = meeting.get("segments", [])
+            for seg in segments:
+                # Speaker filter
+                if speaker_name:
+                    seg_speaker = seg.get("speaker", "").lower()
+                    if speaker_name.lower() not in seg_speaker:
+                        continue
+
+                # Keyword text search
+                if keyword:
+                    text_content = (seg.get("original_text", "") + " " + seg.get("russian_translation", "")).lower()
+                    if keyword.lower() not in text_content:
+                        continue
+
+                results.append({
+                    "meeting_id": meeting_id,
+                    "meeting_title": f"Meeting {meeting_id[:8]}",
+                    "speaker_name": seg.get("speaker", "Unknown"),
+                    "start_time": seg.get("start_time", 0.0),
+                    "text": seg.get("original_text", ""),
+                    "translation": seg.get("russian_translation", "")
+                })
+
+    return {
+        "intent": parsed_intent,
+        "results": results,
+        "ai_summary_answer": ai_summary_answer
+    }
+
+
