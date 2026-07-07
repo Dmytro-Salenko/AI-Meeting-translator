@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../data/network/meeting_sync_service.dart';
+import '../../../../data/network/meeting_sync_service.dart';
 import 'meeting_event.dart';
 import 'meeting_state.dart';
 

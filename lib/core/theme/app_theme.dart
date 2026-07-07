@@ -1,35 +1,52 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Hex color codes mapped to Flutter Color objects
-  static const Color darkCanvas = Color(0xFF0D0E12); // Deep Matte Black
-  static const Color darkSurface = Color(0xFF16171D); // Dark Graphite Card background
-  static const Color accentRed = Color(0xFFE53935); // Stop Floating Capsule Red
+  // Fluid Onyx color design system tokens
+  static const Color onyxBackground = Color(0xFF121212); // Deep Charcoal Onyx
+  static const Color onyxSurface = Color(0xFF1C1C24);    // Elevated Glassmorphism Graphite Cards
+  static const Color onyxBorder = Color(0xFF2C2C35);     // Thin border separator
+  
+  // Status Accent Colors
+  static const Color emeraldActive = Color(0xFF10B981);  // Recording active indicator
+  static const Color amberWarning = Color(0xFFF59E0B);   // Network lost warning
+  static const Color blueSync = Color(0xFF3B82F6);       // Buffer uploading/restoring
+  static const Color stopRed = Color(0xFFEF4444);        // STOP Capsule background
 
-  static ThemeData get darkTheme {
+  static ThemeData get darkOnyxTheme {
     return ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: darkCanvas,
-      cardColor: darkSurface,
+      scaffoldBackgroundColor: onyxBackground,
+      cardColor: onyxSurface,
+      dividerColor: onyxBorder,
       colorScheme: const ColorScheme.dark(
         primary: Colors.white,
-        surface: darkSurface,
-        error: accentRed,
+        secondary: blueSync,
+        surface: onyxSurface,
+        background: onyxBackground,
+        error: stopRed,
       ),
       textTheme: const TextTheme(
-        // Style specific to translation output (lineHeight 1.65, 20sp)
+        // High-contrast, spacious typography for live translation view
         bodyLarge: TextStyle(
           fontFamily: 'Inter',
-          fontSize: 20.0,
+          fontSize: 22.0,
           fontWeight: FontWeight.w400,
           height: 1.65,
           color: Colors.white,
+          letterSpacing: 0.15,
         ),
-        // Style for secondary labels/UI components
+        // Secondary description texts
         bodyMedium: TextStyle(
           fontFamily: 'Inter',
           fontSize: 14.0,
-          fontWeight: FontWeight.w400,
           color: Colors.white70,
+          height: 1.4,
+        ),
+        // Titles and headers
+        titleMedium: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 16.0,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
         ),
       ),
     );
