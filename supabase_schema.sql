@@ -72,7 +72,15 @@ CREATE TABLE IF NOT EXISTS meetings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Speakers
+-- Profiles (Biometric Voice Fingerprints & Names)
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    voice_fingerprint TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Speakers (Meeting-specific override or participants tracker)
 CREATE TABLE IF NOT EXISTS speakers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -85,7 +93,8 @@ CREATE TABLE IF NOT EXISTS speakers (
 CREATE TABLE IF NOT EXISTS meeting_segments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-    speaker_id UUID REFERENCES speakers(id) ON DELETE SET NULL, -- Soft delete/unlink speaker if merged/deleted
+    speaker_id UUID REFERENCES profiles(id) ON DELETE SET NULL, -- Links segment to biometric profile
+    speaker_label TEXT, -- Technical label (e.g. Speaker A)
     
     -- Timings in seconds from meeting start (Numeric supports milliseconds precision)
     start_time NUMERIC(8, 3) NOT NULL,

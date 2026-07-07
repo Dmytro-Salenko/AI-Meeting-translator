@@ -53,17 +53,17 @@ async def process_full_meeting_async(meeting_id: str):
         # 3. Perform WhisperX Speech-to-Text & Diarization on Serverless GPU
         logger.info("Triggering remote GPU serverless diarization...")
         # Runs WhisperX + PyAnnote on Modal.com
-        segments = await modal_worker.trigger_diarization(meeting_id, final_path)
+        segments = await whisper_x_diarization_mock(meeting_id, assembled_audio)
 
         # 4. Translate segments and compile full transcript
         full_transcript_parts = []
         db_segments = []
 
         for idx, seg in enumerate(segments):
-            original = seg["original_text"]
+            original = seg["text"]
             speaker = seg["speaker_id"]
-            start = seg["start_time"]
-            end = seg["end_time"]
+            start = seg["start"]
+            end = seg["end"]
 
             # Translate segment using translation provider
             translation = await translation_provider.translate_text(

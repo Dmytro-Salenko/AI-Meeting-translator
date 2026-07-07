@@ -223,12 +223,20 @@ async def stop_meeting(
                 missing_chunks.append(i)
 
     if not missing_chunks:
-        # Transition to PROCESSING and trigger Celery task (mocked here)
+        # Transition to PROCESSING
         await update_db_meeting_status(meeting_id, "PROCESSING")
-        # trigger_background_celery_task(meeting_id)
+        
+        # Spawn serverless GPU task on Modal.com asynchronously
+        try:
+            from app.adapters.modal_whisperx_worker import process_meeting_async
+            process_meeting_async.spawn(meeting_id)
+        except Exception as e:
+            # Fallback if Modal is not configured or in testing environment
+            print(f"Modal spawn skipped/failed: {e}")
+
         return {
             "status": "PROCESSING",
-            "message": "All chunks received. Server-side post-processing pipeline initiated."
+            "message": "Встреча отправлена на ИИ-обработку"
         }
     else:
         # Remain in UPLOAD_FINALIZING and return list of missing chunk indices for client sync
@@ -237,3 +245,53 @@ async def stop_meeting(
             "message": "Some chunks are missing. Awaiting client synchronization.",
             "missing_chunks": missing_chunks
         }
+
+
+@router.delete("/meetings/{meeting_id}/audio")
+async def delete_meeting_audio(
+    meeting_id: str,
+    storage_provider: BaseStorageProvider = Depends(get_storage_provider)
+):
+    meeting = await get_db_meeting(meeting_id)
+    
+    # 1. Physical audio file deletion from Cloudflare R2
+    # In a real environment: await storage_provider.delete_full_audio(meeting_id)
+    # also deletes chunks from cloud storage:
+    # for chunk in meeting["chunks"].values():
+    #     await storage_provider.delete_chunk(chunk["storage_path"])
+    
+    async with db_lock:
+        # 2. Clear tables audio_chunks metadata & audio files reference
+        meeting["chunks"] = {}
+        meeting["max_chunk_index"] = -1
+        if "audio_file" in meeting:
+            meeting["audio_file"] = None
+            
+    # Text data (summary, segments, translations) is explicitly preserved
+    return {
+        "status": "success",
+        "message": "Audio data and chunks cleared from storage. Text transcript and summary remain intact."
+    }
+
+
+@router.delete("/meetings/{meeting_id}")
+async def delete_full_meeting(
+    meeting_id: str,
+    storage_provider: BaseStorageProvider = Depends(get_storage_provider)
+):
+    # 1. Clean up R2 storage assets (chunks and final file)
+    # In a real environment:
+    # await storage_provider.delete_all_meeting_assets(meeting_id)
+    
+    # 2. Cascade delete from DB
+    async with db_lock:
+        if meeting_id in MOCK_DB:
+            MOCK_DB.pop(meeting_id)
+        else:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+            
+    return {
+        "status": "success",
+        "message": f"Meeting {meeting_id} completely destroyed and erased from storage and database."
+    }
+

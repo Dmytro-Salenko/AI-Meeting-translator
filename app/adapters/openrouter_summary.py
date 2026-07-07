@@ -27,7 +27,8 @@ class OpenRouterSummaryProvider(BaseSummaryProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/dimasalenko/ai-meeting-translator",
-            "X-Title": "AI Meeting Translator"
+            "X-Title": "AI Meeting Translator",
+            "X-Provider-Privacy": "no-store"  # Requests zero logging on the provider's side
         }
 
         # System prompt with strict JSON schema instructions
@@ -51,7 +52,11 @@ class OpenRouterSummaryProvider(BaseSummaryProvider):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Transcript:\n{full_transcript}"}
             ],
-            "response_format": {"type": "json_object"}
+            "response_format": {"type": "json_object"},
+            # Zero Data Retention parameter override to deny data model training usage
+            "provider": {
+                "data_collection": "deny"
+            }
         }
 
         async with httpx.AsyncClient(timeout=60.0) as client:

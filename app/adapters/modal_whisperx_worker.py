@@ -1,120 +1,118 @@
 import modal
+import os
 
-# Define the container image with necessary OS packages, CUDA, PyTorch and WhisperX
-whisperx_image = (
+# 1. Создаем образ серверной среды для видеокарты
+# Устанавливаем системные аудио-библиотеки (ffmpeg) и нужные нейросети
+app_image = (
     modal.Image.debian_slim(python_version="3.10")
-    .apt_install("ffmpeg", "git", "wget")
+    .apt_install("ffmpeg")
     .pip_install(
+        "whisperx==3.1.1",
+        "supabase==2.3.0",
+        "boto3==1.34.0",
         "torch==2.1.2",
-        "torchaudio==2.1.2",
-        "index-override",
-        extra_options="--index-url https://download.pytorch.org/whl/cu118"
-    )
-    .pip_install(
-        "git+https://github.com/m-bain/whisperX.git",
-        "boto3",
-        "soundfile"
-    )
-    # Pre-download and cache model during container build step to avoid cold start lag
-    .run_commands(
-        "python -c 'import whisperx; whisperx.load_model(\"medium\", \"cuda\", compute_type=\"float16\")'"
+        "torchaudio==2.1.2"
     )
 )
 
-app = modal.App("whisperx-app", image=whisperx_image)
+# Регистрируем наше облачное ИИ-приложение в системе Modal
+app = modal.App(name="ai-meeting-processor", image=app_image)
 
-
+# 2. Главная функция обработки митинга, работающая НА ВИДЕОКАРТЕ (GPU)
+# Подключаем наш созданный сейф с ключами через .secrets
 @app.function(
-    gpu="A10G",
-    timeout=600,
-    secrets=[
-        modal.Secret.from_name("huggingface-secret"), # For HF_TOKEN
-        modal.Secret.from_name("cloudflare-r2-secret") # For R2 AWS credentials
-    ]
+    gpu="T4",  # Оптимальная по цене/скорости бесплатная видеокарта NVIDIA
+    secrets=[modal.Secret.from_name("ai-meeting-secrets")],
+    timeout=1200  # Защита от зависания: максимум 20 минут на митинг
 )
-def process_audio(meeting_id: str, r2_file_path: str) -> list[dict]:
-    """
-    Downloads full assembled audio from Cloudflare R2, executes WhisperX transcription,
-    word alignment, and speaker diarization, then returns parsed speaker segments.
-    """
-    import os
+def process_meeting_async(meeting_id: str):
     import boto3
+    from supabase import create_client, Client
     import whisperx
     import torch
-
-    device = "cuda"
-    batch_size = 16
-    compute_type = "float16"
-
-    # 1. Download audio file from R2 to local container scratch disk
-    s3 = boto3.client(
+    
+    print(f"🚀 ИИ-Воркер запущен. Начинаем обработку встречи: {meeting_id}")
+    
+    # Подключаемся к Supabase и Cloudflare R2 внутри видеокарты
+    supabase_url = os.environ["SUPABASE_URL"]
+    supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    supabase: Client = create_client(supabase_url, supabase_key)
+    
+    r2_bucket = os.environ["R2_BUCKET_NAME"]
+    s3_client = boto3.client(
         "s3",
+        endpoint_url=os.environ["R2_ENDPOINT_URL"],
         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-        endpoint_url=os.environ["R2_ENDPOINT_URL"]
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"]
     )
     
-    local_audio_path = f"/tmp/{meeting_id}_final.wav"
-    s3.download_file(
-        Bucket=os.environ["R2_BUCKET_NAME"],
-        Key=r2_file_path,
-        Filename=local_audio_path
-    )
-
-    # 2. Transcribe audio with WhisperX
-    model = whisperx.load_model("medium", device, compute_type=compute_type)
+    # Шаг A. Скачиваем аудиофайл встречи из Cloudflare R2 во временную память видеокарты
+    local_audio_path = f"/tmp/{meeting_id}.mp3"
+    object_key = f"meetings/{meeting_id}/final_audio.mp3"
+    
+    print("📥 Скачиваем аудиозапись из Cloudflare R2...")
+    s3_client.download_file(r2_bucket, object_key, local_audio_path)
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    compute_type = "float16" # Ускоренное вычисление для видеокарт
+    
+    # Шаг B. Запускаем высокоточное распознавание текста (STT Faster-Whisper)
+    print("🎙️ Нейросеть распознает речь (STT)...")
+    model = whisperx.load_model("large-v2", device, compute_type=compute_type, language="en")
     audio = whisperx.load_audio(local_audio_path)
-    result = model.transcribe(audio, batch_size=batch_size)
+    result = model.transcribe(audio, batch_size=16)
     
-    # Clean up model to release GPU memory before alignment/diarization
-    del model
-    torch.cuda.empty_cache()
-
-    # 3. Align Whisper output timestamps
-    model_a, metadata = whisperx.load_align_model(
-        language_code=result["language"], 
-        device=device
-    )
-    aligned_result = whisperx.align(
-        result["segments"], 
-        model_a, 
-        metadata, 
-        audio, 
-        device, 
-        return_char_alignments=False
-    )
+    # Шаг C. Выравнивание таймингов слов (чтобы перевод бежал ровно секунда в секунду)
+    model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
+    result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
     
-    del model_a
-    torch.cuda.empty_cache()
-
-    # 4. Perform Speaker Diarization using PyAnnote (requires HF_TOKEN)
-    hf_token = os.environ.get("HF_TOKEN")
-    diarize_model = whisperx.DiarizationPipeline(
-        use_auth_token=hf_token, 
-        device=device
-    )
+    # Шаг D. Диаризация: Разделение голосов (Кто именно говорит: Спикер А, Спикер Б)
+    print("👥 Разделяем голоса спикеров на аудиозаписи (Diarization)...")
+    diarize_model = whisperx.DiarizationPipeline(use_auth_token=None, device=device)
+    diarize_segments = diarize_model(audio)
     
-    diarize_segments = diarize_model(
-        audio, 
-        min_speakers=1, 
-        max_speakers=10
-    )
+    # Объединяем текст и разделенные голоса вместе
+    final_result = whisperx.assign_word_speakers(diarize_segments, result)
     
-    # 5. Assign speakers to aligned text segments
-    final_segments = whisperx.assign_word_speakers(diarize_segments, aligned_result)
-
-    # 6. Format segments into standard payload structure
-    output = []
-    for seg in final_segments["segments"]:
-        output.append({
-            "start_time": float(seg.get("start", 0.0)),
-            "end_time": float(seg.get("end", 0.0)),
-            "speaker_id": str(seg.get("speaker", "Speaker Unknown")),
-            "original_text": str(seg.get("text", "")).strip()
-        })
-
-    # Cleanup temp file
+    print("💾 Запись результатов в базу данных Supabase...")
+    # Шаг E. Построчно сохраняем сегменты в таблицу `meeting_segments`
+    for segment in final_result["segments"]:
+        start_time = segment["start"]
+        end_time = segment["end"]
+        text = segment["text"]
+        speaker_label = segment.get("speaker", "Speaker X")
+        
+        # Логика интеграции с домашней базой профилей участников
+        # Сначала проверяем, есть ли уже этот спикер в таблице `profiles`
+        profile_res = supabase.table("profiles").select("id").eq("voice_fingerprint", speaker_label).execute()
+        
+        if profile_res.data:
+            speaker_id = profile_res.data[0]["id"]
+        else:
+            # Создаем новый профиль для нового голоса, если его еще не было
+            new_profile = supabase.table("profiles").insert({
+                "name": f"Новый спикер ({speaker_label})",
+                "voice_fingerprint": speaker_label
+            }).execute()
+            speaker_id = new_profile.data[0]["id"]
+            
+        # Отправляем готовую строчку текста встречи в базу данных
+        supabase.table("meeting_segments").insert({
+            "meeting_id": meeting_id,
+            "speaker_id": speaker_id,
+            "speaker_label": speaker_label,
+            "start_time": start_time,
+            "end_time": end_time,
+            "original_text": text,
+            "russian_translation": "" # Поле для будущего перевода
+        }).execute()
+        
+    # Обновляем статус встречи в базе — теперь она готова для генерации саммари через OpenRouter
+    supabase.table("meetings").update({"status": "PROCESSING"}).eq("id", meeting_id).execute()
+    
+    # Удаляем временный аудиофайл с видеокарты ради полной конфиденциальности
     if os.path.exists(local_audio_path):
         os.remove(local_audio_path)
-
-    return output
+        
+    print(f"🎉 Обработка встречи {meeting_id} успешно завершена!")
+    return {"status": "success"}
