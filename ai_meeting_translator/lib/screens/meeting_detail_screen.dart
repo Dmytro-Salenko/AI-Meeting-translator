@@ -78,6 +78,36 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
             child: Column(
               children: [
                 const SizedBox(height: 8),
+                // Metadata Block (Date, Time, Duration, Participants)
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  margin: const EdgeInsets.only(bottom: 12.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16171D),
+                    borderRadius: BorderRadius.circular(16.0),
+                    border: Border.all(color: Colors.white.withOpacity(0.04)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          Text("Дата: 2026-07-07", style: TextStyle(color: Colors.white70, fontFamily: 'Inter', fontSize: 13)),
+                          Text("Время: 14:30 - 14:45", style: TextStyle(color: Colors.white70, fontFamily: 'Inter', fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          Text("Длительность: 15 минут", style: TextStyle(color: Colors.white70, fontFamily: 'Inter', fontSize: 13)),
+                          Text("Участники: Dmitry, David", style: TextStyle(color: Color(0xFF3B82F6), fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 Container(
                   padding: const EdgeInsets.all(4.0),
                   decoration: BoxDecoration(

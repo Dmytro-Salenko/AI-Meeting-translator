@@ -10,19 +10,25 @@ class ArchiveScreen extends StatefulWidget {
 class _ArchiveScreenState extends State<ArchiveScreen> {
   final TextEditingController _searchController = TextEditingController();
   
-  // Dummy archive list
+  // Dummy archive list with rich metadata matching T3
   final List<Map<String, dynamic>> _meetings = [
     {
       "id": "meeting_demo_1",
       "title": "Встреча: Архитектура Поиска",
       "date": "2026-07-07",
-      "duration": "00:15",
+      "time": "14:30 - 14:45",
+      "duration": "15 минут",
+      "summary": "Разработка трилингвального поискового ИИ-агента, интеграция с OpenRouter (Gemini) и создание GIN-индексов в PostgreSQL.",
+      "participants_count": 2,
     },
     {
       "id": "meeting_demo_2",
       "title": "Синхронизация по R2 Бакетам",
       "date": "2026-07-06",
-      "duration": "00:22",
+      "time": "11:00 - 11:22",
+      "duration": "22 минуты",
+      "summary": "Настройка CORS-политик, тестирование провайдера R2 S3-Storage и выгрузка оффлайн-буфера чанков с Android клиента.",
+      "participants_count": 3,
     }
   ];
 
@@ -176,15 +182,71 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
         final meeting = _meetings[index];
         return Card(
           color: const Color(0xFF16171D),
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ListTile(
-            onTap: () {
-              Navigator.pushNamed(context, '/details', arguments: meeting["id"]);
-            },
-            title: Text(meeting["title"]!, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text("Дата: ${meeting['date']!} | Длительность: ${meeting['duration']!}"),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white30),
+          margin: const EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withOpacity(0.04)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      meeting["date"]!,
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                    Text(
+                      meeting["time"]!,
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  meeting["title"]!,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  meeting["summary"]!,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Длительность: ${meeting['duration']!}",
+                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                    Text(
+                      "Участников: ${meeting['participants_count']}",
+                      style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/details', arguments: meeting["id"]);
+                    },
+                    icon: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
+                    label: const Text("Открыть встречу", style: TextStyle(color: Colors.white)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E2F38),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
