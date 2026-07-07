@@ -234,20 +234,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildWaveformSide({required bool isLeft}) {
+    // Symmetrical wave heights matching the mockup design
+    final List<double> heights = isLeft 
+        ? [8.0, 16.0, 32.0, 48.0, 64.0, 40.0, 24.0, 12.0]
+        : [12.0, 24.0, 40.0, 64.0, 48.0, 32.0, 16.0, 8.0];
+
     return Row(
-      children: List.generate(4, (index) {
-        final double baseHeight = (index + 1) * 12.0;
+      children: List.generate(heights.length, (index) {
+        final double baseHeight = heights[index];
         return AnimatedBuilder(
           animation: _waveController,
           builder: (context, child) {
-            final double animatedHeight = baseHeight + (_waveController.value * 20.0);
+            // Apply scale animation to make the waves feel responsive and alive
+            final double animatedHeight = baseHeight + (_waveController.value * (baseHeight * 0.4));
             return Container(
-              width: 3.5,
-              height: animatedHeight.clamp(8.0, 70.0),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: 3.0,
+              height: animatedHeight,
+              margin: const EdgeInsets.symmetric(horizontal: 2.5),
               decoration: BoxDecoration(
-                color: const Color(0xFF7F3DFF).withOpacity(0.2 + (index * 0.15)),
-                borderRadius: BorderRadius.circular(2),
+                color: const Color(0xFF7F3DFF).withOpacity(0.15 + (index % 3) * 0.25),
+                borderRadius: BorderRadius.circular(4.5),
               ),
             );
           },
