@@ -153,7 +153,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       seg["speaker"],
@@ -181,7 +181,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
                     fontFamily: 'Inter',
                     fontSize: 15.0,
                     height: 1.45,
-                    color: isPlaying ? Colors.white : Colors.white90,
+                    color: isPlaying ? Colors.white : Colors.white.withOpacity(0.9),
                   ),
                 ),
               ],
@@ -205,11 +205,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
           _buildSummaryBlock(
             "Основные решения",
             "• Интегрировать OpenRouter (Gemini 2.5 Flash) для парсинга поисковых намерений.\n• Сохранить биометрические голосовые отпечатки для локального тестирования.",
-            Colors.emerald,
+            Colors.green,
           ),
           _buildSummaryBlock(
             "Задачи (Action Items)",
-            "• Дмитрий $\\rightarrow$ Разработать API-эндпоинт поиска.\n• Давид $\\rightarrow$ Сверстать экран архива во Flutter.",
+            "• Дмитрий \$\\rightarrow\$ Разработать API-эндпоинт поиска.\n• Давид \$\\rightarrow\$ Сверстать экран архива во Flutter.",
             Colors.orangeAccent,
           ),
         ],
