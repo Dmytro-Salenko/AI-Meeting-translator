@@ -26,6 +26,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  void _startMeeting() {
+    Navigator.pushNamed(context, '/meeting');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. App Bar Header (Title & Settings Gear icon)
+              // 1. App Bar Header (Title Logo & Settings Gear icon)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -47,18 +51,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         "AI Meeting",
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 28.0,
+                          fontSize: 34.0, // Larger, more prominent logo
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
+                          letterSpacing: -0.5,
                         ),
                       ),
                       Text(
                         "Translator",
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 28.0,
+                          fontSize: 34.0, // Larger, more prominent logo
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF7F3DFF), // Violet Brand color
+                          letterSpacing: -0.5,
                         ),
                       ),
                     ],
@@ -71,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       border: Border.all(color: Colors.white.withOpacity(0.05)),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 22),
+                      icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 24),
                       onPressed: () {},
                     ),
                   ),
@@ -79,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const Spacer(),
 
-              // 2. Central Mic & Soundwave Visualization
+              // 2. Central Mic Button & Soundwave Visualization (Active Trigger)
               Center(
                 child: Container(
                   height: 200,
@@ -89,29 +95,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       // Left soundwave
                       _buildWaveformSide(isLeft: true),
                       const SizedBox(width: 16),
-                      // Circular Mic Button container
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16171D),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFF7F3DFF).withOpacity(0.3),
-                            width: 1.5,
+                      // Circular Mic Button container - Active start tap
+                      GestureDetector(
+                        onTap: _startMeeting,
+                        child: Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16171D),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF7F3DFF).withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF7F3DFF).withOpacity(0.15),
+                                blurRadius: 25,
+                                spreadRadius: 2,
+                              )
+                            ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF7F3DFF).withOpacity(0.15),
-                              blurRadius: 25,
-                              spreadRadius: 2,
-                            )
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.mic_rounded,
-                          color: Color(0xFF7F3DFF),
-                          size: 42,
+                          child: const Icon(
+                            Icons.mic_rounded,
+                            color: Color(0xFF7F3DFF),
+                            size: 42,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -125,16 +134,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
               // 3. Violet Gradient Start Meeting Button
               GestureDetector(
-                onTap: () {
-                  Navigator.pushNamed(context, '/meeting');
-                },
+                onTap: _startMeeting,
                 child: Container(
                   height: 64,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [
-                        Color(0xFF7F3DFF), // Deep Violet
-                        Color(0xFF9E66FF), // Light Purple
+                        Color(0xFF7F3DFF),
+                        Color(0xFF9E66FF),
                       ],
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
@@ -169,25 +176,39 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const SizedBox(height: 16),
 
-              // 4. Archive Button
-              _buildDarkButton(
-                icon: Icons.folder_open_outlined,
-                label: "Archive",
+              // 4. Archive Button (Lighter background, larger and lighter text)
+              GestureDetector(
                 onTap: () {
                   Navigator.pushNamed(context, '/archive');
                 },
-              ),
-              const SizedBox(height: 16),
-
-              // 5. Settings Button (Internal Configuration Shortcut)
-              _buildDarkButton(
-                icon: Icons.tune_rounded,
-                label: "Settings",
-                onTap: () {},
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E2F38), // Lighter card grey matching specs
+                    borderRadius: BorderRadius.circular(16.0),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.folder_open_outlined, color: Colors.white, size: 22),
+                      SizedBox(width: 14),
+                      Text(
+                        "Archive",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 16.0, // Larger text
+                          fontWeight: FontWeight.w700, // Lighter, bold and clean text
+                          color: Colors.white, // Fully white text
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const Spacer(),
 
-              // 6. Security Footer
+              // 5. Security Footer
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -207,40 +228,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDarkButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: const Color(0xFF16171D), // Dark Card graphite
-          borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(color: Colors.white.withOpacity(0.04)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white70, size: 22),
-            const SizedBox(width: 14),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 15.0,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ],
         ),
       ),
     );
