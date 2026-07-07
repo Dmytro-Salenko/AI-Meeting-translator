@@ -47,15 +47,24 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
     }
   ];
 
+  final TextEditingController _localSearchController = TextEditingController();
+  String _localSearchQuery = "";
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _localSearchController.addListener(() {
+      setState(() {
+        _localSearchQuery = _localSearchController.text;
+      });
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _localSearchController.dispose();
     super.dispose();
   }
 
@@ -154,71 +163,117 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
   }
 
   Widget _buildTranscriptTab() {
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      itemCount: _transcript.length,
-      itemBuilder: (context, index) {
-        final seg = _transcript[index];
-        final bool isPlaying = _audioPosition >= seg["sec"] &&
-            (index == _transcript.length - 1 || _audioPosition < _transcript[index + 1]["sec"]);
+    final filtered = _transcript.where((seg) {
+      final query = _localSearchQuery.toLowerCase().trim();
+      if (query.isEmpty) return true;
+      return seg["text"].toString().toLowerCase().contains(query) ||
+             seg["speaker"].toString().toLowerCase().contains(query);
+    }).toList();
 
-        return GestureDetector(
-          onTap: () {
-            setState(() {
-              _audioPosition = seg["sec"];
-            });
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12.0),
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: isPlaying ? const Color(0xFF22232B) : const Color(0xFF16171D),
-              borderRadius: BorderRadius.circular(16.0),
-              border: Border.all(
-                color: isPlaying ? Colors.white10 : Colors.transparent,
-                width: 1.0,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      seg["speaker"],
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14.0,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF3B82F6),
-                      ),
-                    ),
-                    Text(
-                      seg["time"],
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12.0,
-                        color: Colors.white30,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  seg["text"],
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15.0,
-                    height: 1.45,
-                    color: isPlaying ? Colors.white : Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ],
+    return Column(
+      children: [
+        // Local Search Bar inside details screen
+        TextField(
+          controller: _localSearchController,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: "Поиск по стенограмме встречи...",
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+            prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 20),
+            suffixIcon: _localSearchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, color: Colors.white38, size: 16),
+                    onPressed: () => _localSearchController.clear(),
+                  )
+                : null,
+            filled: true,
+            fillColor: const Color(0xFF16171D),
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
             ),
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(
+                  child: Text(
+                    "Совпадений в расшифровке не найдено",
+                    style: TextStyle(color: Colors.white38, fontSize: 14, fontFamily: 'Inter'),
+                  ),
+                )
+              : ListView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final seg = filtered[index];
+                    final bool isPlaying = _audioPosition >= seg["sec"] &&
+                        (index == filtered.length - 1 || _audioPosition < filtered[index + 1]["sec"]);
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _audioPosition = seg["sec"];
+                        });
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12.0),
+                        padding: const EdgeInsets.all(16.0),
+                        decoration: BoxDecoration(
+                          color: isPlaying ? const Color(0xFF22232B) : const Color(0xFF16171D),
+                          borderRadius: BorderRadius.circular(16.0),
+                          border: Border.all(
+                            color: isPlaying ? Colors.white10 : Colors.transparent,
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  seg["speaker"],
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 14.0,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF3B82F6),
+                                  ),
+                                ),
+                                Text(
+                                  seg["time"],
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 12.0,
+                                    color: Colors.white30,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              seg["text"],
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 15.0,
+                                height: 1.45,
+                                color: isPlaying ? Colors.white : Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
     );
   }
 
