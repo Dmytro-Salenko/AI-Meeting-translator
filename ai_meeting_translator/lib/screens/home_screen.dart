@@ -88,42 +88,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               // 2. Central Mic Button & Soundwave Visualization (Active Trigger)
               Center(
                 child: Container(
-                  height: 200,
+                  height: 220,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Left soundwave
                       _buildWaveformSide(isLeft: true),
-                      const SizedBox(width: 16),
-                      // Circular Mic Button container - Active start tap
+                      const SizedBox(width: 20),
+                      // Circular Mic Button container - Active start tap (Enlarged)
                       GestureDetector(
                         onTap: _startMeeting,
                         child: Container(
-                          width: 96,
-                          height: 96,
+                          width: 140,
+                          height: 140,
                           decoration: BoxDecoration(
                             color: const Color(0xFF16171D),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFF7F3DFF).withOpacity(0.3),
-                              width: 1.5,
+                              color: const Color(0xFF7F3DFF).withOpacity(0.4),
+                              width: 2.0,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF7F3DFF).withOpacity(0.15),
-                                blurRadius: 25,
-                                spreadRadius: 2,
+                                color: const Color(0xFF7F3DFF).withOpacity(0.2),
+                                blurRadius: 35,
+                                spreadRadius: 4,
                               )
                             ],
                           ),
                           child: const Icon(
                             Icons.mic_rounded,
                             color: Color(0xFF7F3DFF),
-                            size: 42,
+                            size: 64, // Enlarged microphone icon
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 20),
                       // Right soundwave
                       _buildWaveformSide(isLeft: false),
                     ],
@@ -132,74 +132,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const Spacer(),
 
-              // 3. Violet Gradient Start Meeting Button
-              GestureDetector(
-                onTap: _startMeeting,
-                child: Container(
-                  height: 64,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF7F3DFF),
-                        Color(0xFF9E66FF),
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16.0),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF7F3DFF).withOpacity(0.3),
-                        blurRadius: 15,
-                        offset: const Offset(0, 4),
-                      )
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
-                      SizedBox(width: 8),
-                      Text(
-                        "Start Meeting",
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 16.0,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 4. Archive Button (Lighter background, larger and lighter text)
+              // 3. Archive Button (Enlarged, centered, and premium typography)
               GestureDetector(
                 onTap: () {
                   Navigator.pushNamed(context, '/archive');
                 },
                 child: Container(
-                  height: 56,
+                  height: 64, // Enlarged height
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2E2F38), // Lighter card grey matching specs
+                    color: const Color(0xFF16171D), // Dark Card graphite matching image 1
                     borderRadius: BorderRadius.circular(16.0),
-                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center, // Centered horizontally
+                    crossAxisAlignment: CrossAxisAlignment.center, // Centered vertically
                     children: const [
-                      Icon(Icons.folder_open_outlined, color: Colors.white, size: 22),
-                      SizedBox(width: 14),
+                      Icon(Icons.folder_open_outlined, color: Colors.white, size: 24),
+                      SizedBox(width: 12),
                       Text(
                         "Archive",
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 16.0, // Larger text
-                          fontWeight: FontWeight.w700, // Lighter, bold and clean text
-                          color: Colors.white, // Fully white text
+                          fontSize: 18.0, // Larger text size
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.1,
                         ),
                       ),
                     ],
@@ -234,26 +192,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildWaveformSide({required bool isLeft}) {
-    // Symmetrical wave heights matching the mockup design
-    final List<double> heights = isLeft 
-        ? [8.0, 16.0, 32.0, 48.0, 64.0, 40.0, 24.0, 12.0]
-        : [12.0, 24.0, 40.0, 64.0, 48.0, 32.0, 16.0, 8.0];
+    // 9 symmetrical diamond-profile bars exactly matching the close-up reference image
+    final List<double> heights = [12.0, 24.0, 42.0, 58.0, 78.0, 58.0, 42.0, 24.0, 12.0];
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: List.generate(heights.length, (index) {
         final double baseHeight = heights[index];
         return AnimatedBuilder(
           animation: _waveController,
           builder: (context, child) {
-            // Apply scale animation to make the waves feel responsive and alive
-            final double animatedHeight = baseHeight + (_waveController.value * (baseHeight * 0.4));
+            // Symmetrical pulse animation
+            final double animatedHeight = baseHeight + (_waveController.value * (baseHeight * 0.25));
             return Container(
               width: 3.0,
               height: animatedHeight,
               margin: const EdgeInsets.symmetric(horizontal: 2.5),
               decoration: BoxDecoration(
-                color: const Color(0xFF7F3DFF).withOpacity(0.15 + (index % 3) * 0.25),
-                borderRadius: BorderRadius.circular(4.5),
+                color: const Color(0xFF7F3DFF).withOpacity(0.3 + (index == 4 ? 0.5 : (index % 3) * 0.15)),
+                borderRadius: BorderRadius.circular(5),
               ),
             );
           },
