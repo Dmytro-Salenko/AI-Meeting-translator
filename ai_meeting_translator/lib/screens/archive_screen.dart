@@ -32,6 +32,10 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
     }
   ];
 
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+  String? _aiSummaryAnswer;
+
   void _editMeetingTitle(Map<String, dynamic> meeting) {
     final controller = TextEditingController(text: meeting["title"]);
     showDialog(
