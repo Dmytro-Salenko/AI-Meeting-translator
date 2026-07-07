@@ -8,23 +8,55 @@ class MeetingScreen extends StatefulWidget {
   State<MeetingScreen> createState() => _MeetingScreenState();
 }
 
+class SpeechSegment {
+  final String speakerInitials;
+  final String timestamp;
+  final String text;
+  final Color color;
+
+  SpeechSegment({
+    required this.speakerInitials,
+    required this.timestamp,
+    required this.text,
+    required this.color,
+  });
+}
+
 class _MeetingScreenState extends State<MeetingScreen> {
   final ScrollController _scrollController = ScrollController();
   late Timer _timer;
   int _secondsElapsed = 0;
-  
-  final List<String> _paragraphs = [
-    "Сессия инициализирована. Запуск WebSocket...",
+
+  final List<SpeechSegment> _segments = [
+    SpeechSegment(
+      speakerInitials: "C",
+      timestamp: "00:21",
+      text: "Итак, давайте начнем с ключевых целей на этот квартал. Наша основная задача — увеличить удовлетворенность клиентов и сократить время ответа поддержки.",
+      color: const Color(0xFF7F3DFF), // Purple
+    ),
   ];
 
   late Timer _mockDataTimer;
   int _mockIndex = 0;
-  final List<String> _mockTexts = [
-    "Здравствуйте. Начнем обсуждение новой архитектуры поиска.",
-    "Мы планируем использовать ИИ-агента для разбора трилингвальных запросов.",
-    "Это позволит пользователям писать вопросы на русском, украинском и английском языках.",
-    "Система автоматически найдет нужные аудиосегменты и покажет таймкоды.",
-    "На сегодня все. Завершаем встречу и отправляем на постобработку."
+  final List<SpeechSegment> _mockSegments = [
+    SpeechSegment(
+      speakerInitials: "M",
+      timestamp: "00:32",
+      text: "Мы также обсудим запуск новой функции и план маркетинговых активностей на следующий месяц.",
+      color: const Color(0xFF3B82F6), // Blue
+    ),
+    SpeechSegment(
+      speakerInitials: "A",
+      timestamp: "00:47",
+      text: "Есть ли вопросы по первому пункту?",
+      color: const Color(0xFFEF4444), // Amber/Orange
+    ),
+    SpeechSegment(
+      speakerInitials: "S",
+      timestamp: "01:05",
+      text: "Да, подскажите, какие метрики поддержки мы будем считать основными?",
+      color: const Color(0xFFF59E0B), // Orange
+    )
   ];
 
   @override
@@ -36,10 +68,10 @@ class _MeetingScreenState extends State<MeetingScreen> {
       });
     });
 
-    _mockDataTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_mockIndex < _mockTexts.length) {
+    _mockDataTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_mockIndex < _mockSegments.length) {
         setState(() {
-          _paragraphs.add(_mockTexts[_mockIndex]);
+          _segments.add(_mockSegments[_mockIndex]);
           _mockIndex++;
         });
         _scrollToBottom();
@@ -77,13 +109,14 @@ class _MeetingScreenState extends State<MeetingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Pure OLED black
+      backgroundColor: const Color(0xFF0D0E12), // OLED deep dark
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status bar
+            // 1. Top Recording Status Bar
             Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -99,12 +132,12 @@ class _MeetingScreenState extends State<MeetingScreen> {
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        "🔴 ЗАПИСЬ ИДЕТ",
+                        "Запись активна",
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFEF4444),
+                          fontSize: 14.0,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ],
@@ -113,7 +146,7 @@ class _MeetingScreenState extends State<MeetingScreen> {
                     _formatTime(_secondsElapsed),
                     style: const TextStyle(
                       fontFamily: 'Inter',
-                      fontSize: 16.0,
+                      fontSize: 14.0,
                       fontWeight: FontWeight.w600,
                       color: Colors.white70,
                     ),
@@ -122,59 +155,164 @@ class _MeetingScreenState extends State<MeetingScreen> {
               ),
             ),
 
-            // Live text stream area
-            Expanded(
-              child: ShaderMask(
-                shaderCallback: (bounds) {
-                  return const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black],
-                    stops: [0.0, 0.15],
-                  ).createShader(bounds);
-                },
-                blendMode: BlendMode.dstIn,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: _paragraphs.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 24.0),
-                        child: Text(
-                          _paragraphs[index],
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 22.0,
-                            height: 1.65,
-                            color: Colors.white,
-                          ),
-                        ),
-                      );
-                    },
+            // 2. Participants Horizontal Bar (T3)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Участники (нажмите для подписания)",
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12.0,
+                      color: Colors.white38,
+                    ),
                   ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 80,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        _buildParticipantAvatar("C", const Color(0xFF7F3DFF)),
+                        _buildParticipantAvatar("M", const Color(0xFF3B82F6)),
+                        _buildParticipantAvatar("A", const Color(0xFF10B981)),
+                        _buildParticipantAvatar("S", const Color(0xFFF59E0B)),
+                        _buildParticipantAvatar("D", const Color(0xFF2563EB)),
+                        _buildMoreAvatar("+2"),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 3. Conversation Dialog Area (Dashed lines, Avatars, Timestamps)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _segments.length,
+                  itemBuilder: (context, index) {
+                    final segment = _segments[index];
+                    final bool isLast = index == _segments.length - 1;
+
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Left column (Avatar, Timestamp, Vertical Dash-line)
+                          Column(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: segment.color,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    segment.speakerInitials,
+                                    style: const TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 15.0,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                segment.timestamp,
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 11.0,
+                                  color: Colors.white38,
+                                ),
+                              ),
+                              if (!isLast)
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                    child: CustomPaint(
+                                      size: const Size(1, double.infinity),
+                                      painter: DashLinePainter(),
+                                    ),
+                                  ),
+                                )
+                              else
+                                const SizedBox(height: 20),
+                            ],
+                          ),
+                          const SizedBox(width: 16),
+
+                          // Right column (Speech bubble / text block)
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 24.0, top: 4.0),
+                              child: Text(
+                                segment.text,
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 16.0,
+                                  height: 1.45,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
 
-            // Stop button
+            // 4. Bottom Stop Meeting Button
             Padding(
-              padding: const EdgeInsets.only(bottom: 32.0, top: 16.0),
-              child: RawMaterialButton(
-                onPressed: () {
+              padding: const EdgeInsets.all(24.0),
+              child: GestureDetector(
+                onTap: () {
                   Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
                 },
-                fillColor: const Color(0xFFEF4444),
-                padding: const EdgeInsets.all(24.0),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.stop,
-                  color: Colors.white,
-                  size: 32.0,
+                child: Container(
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1C1215), // Dark red tinted box
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.15)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Stop Meeting",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 16.0,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFEF4444),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -183,4 +321,107 @@ class _MeetingScreenState extends State<MeetingScreen> {
       ),
     );
   }
+
+  Widget _buildParticipantAvatar(String name, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16.0),
+      child: Column(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                name,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Small waveform simulator under each avatar
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              return Container(
+                width: 2,
+                height: (i == 1 ? 10.0 : 6.0),
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              );
+            }),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreAvatar(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16.0),
+      child: Column(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E2027),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14.0,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const SizedBox(height: 10), // empty space offset matching waveforms
+        ],
+      ),
+    );
+  }
+}
+
+// Custom Painter to draw clean dashed lines between message nodes
+class DashLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white24
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    const double dashHeight = 4.0;
+    const double dashSpace = 4.0;
+    double startY = 0;
+
+    while (startY < size.height) {
+      canvas.drawLine(
+        Offset(size.width / 2, startY),
+        Offset(size.width / 2, startY + dashHeight),
+        paint,
+      );
+      startY += dashHeight + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
