@@ -50,10 +50,15 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
   final TextEditingController _localSearchController = TextEditingController();
   String _localSearchQuery = "";
 
+  bool _isEditingTitle = false;
+  late TextEditingController _titleController;
+  String _meetingTitle = "Встреча: Архитектура Поиска";
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _titleController = TextEditingController(text: _meetingTitle);
     _localSearchController.addListener(() {
       setState(() {
         _localSearchQuery = _localSearchController.text;
@@ -65,6 +70,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
   void dispose() {
     _tabController.dispose();
     _localSearchController.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 
@@ -75,10 +81,39 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "Встреча: Архитектура Поиска",
-          style: TextStyle(fontFamily: 'Inter', fontSize: 18.0, fontWeight: FontWeight.w600),
-        ),
+        title: _isEditingTitle
+            ? TextField(
+                controller: _titleController,
+                style: const TextStyle(fontFamily: 'Inter', fontSize: 18.0, fontWeight: FontWeight.w600, color: Colors.white),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  hintText: "Название встречи...",
+                  hintStyle: TextStyle(color: Colors.white30),
+                ),
+                autofocus: true,
+              )
+            : Text(
+                _meetingTitle,
+                style: const TextStyle(fontFamily: 'Inter', fontSize: 18.0, fontWeight: FontWeight.w600),
+              ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _isEditingTitle ? Icons.check_rounded : Icons.edit_outlined,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              setState(() {
+                if (_isEditingTitle) {
+                  _meetingTitle = _titleController.text.trim().isEmpty 
+                      ? "Без названия" 
+                      : _titleController.text;
+                }
+                _isEditingTitle = !_isEditingTitle;
+              });
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [

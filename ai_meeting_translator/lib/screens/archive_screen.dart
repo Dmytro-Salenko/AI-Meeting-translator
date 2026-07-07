@@ -32,9 +32,50 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
     }
   ];
 
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _isSearching = false;
-  String? _aiSummaryAnswer;
+  void _editMeetingTitle(Map<String, dynamic> meeting) {
+    final controller = TextEditingController(text: meeting["title"]);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF16171D),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            "Редактировать название",
+            style: TextStyle(fontFamily: 'Inter', color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: "Название встречи...",
+              hintStyle: TextStyle(color: Colors.white30),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.blueAccent)),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Отмена", style: TextStyle(color: Colors.white54)),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  meeting["title"] = controller.text.trim().isEmpty 
+                      ? "Без названия" 
+                      : controller.text.trim();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text("Сохранить", style: TextStyle(color: Colors.blueAccent)),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _runSearch(String query) async {
     if (query.trim().isEmpty) {
@@ -206,9 +247,22 @@ class _ArchiveScreenState extends State<ArchiveScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  meeting["title"]!,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        meeting["title"]!,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.white60),
+                      onPressed: () => _editMeetingTitle(meeting),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
