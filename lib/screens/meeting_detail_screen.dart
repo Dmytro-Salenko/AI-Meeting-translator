@@ -1,15 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-class DetailsScreen extends StatefulWidget {
+class MeetingDetailScreen extends StatefulWidget {
   final String meetingId;
-  const DetailsScreen({Key? key, required this.meetingId}) : super(key: key);
+  const MeetingDetailScreen({Key? key, required this.meetingId}) : super(key: key);
 
   @override
-  State<DetailsScreen> createState() => _DetailsScreenState();
+  State<MeetingDetailScreen> createState() => _MeetingDetailScreenState();
 }
 
-class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProviderStateMixin {
+class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   double _audioPosition = 0.0;
   final double _audioLength = 15.0;

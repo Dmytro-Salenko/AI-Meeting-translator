@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/meeting_screen.dart';
-import 'screens/details_screen.dart';
+import 'screens/meeting_detail_screen.dart';
 import 'screens/archive_screen.dart';
 import 'core/theme/app_theme.dart';
 
@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
           case '/details':
             final String meetingId = (settings.arguments as String?) ?? 'default';
             return MaterialPageRoute(
-              builder: (context) => DetailsScreen(meetingId: meetingId),
+              builder: (context) => MeetingDetailScreen(meetingId: meetingId),
             );
           case '/archive':
             return MaterialPageRoute(builder: (context) => const ArchiveScreen());
