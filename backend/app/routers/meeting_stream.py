@@ -302,22 +302,20 @@ async def search_meetings(
     translation_provider: BaseTranslationProvider = Depends(get_translation_provider)
 ):
     """
-    Semantic AI Search Agent.
-    1. Uses OpenRouter to parse user natural language intent.
-    2. Builds custom query filters based on parsed intent.
-    3. Searches DB / Mock DB and compiles timestamped results for the player.
+    Trilingual Semantic Search Agent.
+    1. OpenRouter (Gemini 2.5 Flash) intent parsing supporting language mix (EN/RU/UA) and IT-slang.
+    2. Builds keywords in 3 languages (English, Russian, Ukrainian).
+    3. Multi-language query matching (OR matching) on DB fields.
+    4. RAG synthesis in the user's origin language containing start_time references.
     """
     if not q.strip():
         return {"intent": {}, "results": [], "ai_summary_answer": None}
 
     current_time_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    current_date_str = datetime.utcnow().strftime("%Y-%m-%d")
 
-    # Call OpenRouter to parse intent (Zero Data Retention)
-    # Using configured model (e.g. google/gemini-2.5-flash)
     from app.core.config import settings
     api_key = settings.OPENROUTER_API_KEY
-    model = "google/gemini-2.5-flash" # Use fast/cheap flash model for parsing
+    model = "google/gemini-2.5-flash"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -328,25 +326,32 @@ async def search_meetings(
     }
 
     system_prompt = (
-        f"You are a search query intent parser. Today's date and time is {current_time_str}. "
-        "Analyze the user's search query and extract structured filter parameters. "
+        f"You are a trilingual search query intent parser. Today's date and time is {current_time_str}. "
+        "The query may contain a mix of English, Russian, Ukrainian languages, and professional IT-slang. "
+        "Analyze the user's query and extract structured query parameters. "
+        "Provide search keywords translated to all three target languages to maximize match probability. "
         "Return ONLY a JSON object with this structure:\n"
         "{\n"
-        "  \"target_date\": \"YYYY-MM-DD or null (calculate relative dates like 'yesterday' or 'last monday')\",\n"
-        "  \"speaker_name\": \"string of speaker name mentioned, or null\",\n"
-        "  \"search_keyword\": \"main meaning keyword for full-text search, or null\",\n"
-        "  \"intent_type\": \"'summary' | 'proposals' | 'decisions' | 'general_text'\"\n"
+        "  \"target_date\": \"YYYY-MM-DD or null (relative to current date)\",\n"
+        "  \"speaker_name\": \"name of speaker or null (consider EN/UA/RU transliterations)\",\n"
+        "  \"keywords_en\": [\"array of translated concept keywords/synonyms in English or empty\"],\n"
+        "  \"keywords_ru\": [\"array of translated concept keywords/synonyms in Russian or empty\"],\n"
+        "  \"keywords_ua\": [\"array of translated concept keywords/synonyms in Ukrainian or empty\"],\n"
+        "  \"intent_type\": \"'summary' | 'proposals' | 'decisions' | 'general_text'\",\n"
+        "  \"user_language\": \"'ru' | 'en' | 'ua' (language of user query)\"\n"
         "}"
     )
 
     parsed_intent = {
         "target_date": None,
         "speaker_name": None,
-        "search_keyword": q,
-        "intent_type": "general_text"
+        "keywords_en": [],
+        "keywords_ru": [],
+        "keywords_ua": [],
+        "intent_type": "general_text",
+        "user_language": "ru"
     }
 
-    # Call OpenRouter API
     try:
         import httpx
         payload = {
@@ -364,38 +369,30 @@ async def search_meetings(
                 raw_json = response.json()["choices"][0]["message"]["content"].strip()
                 parsed_intent = json.loads(raw_json)
     except Exception as e:
-        print(f"Error parsing search intent with OpenRouter: {e}")
+        print(f"Error parsing trilingual intent: {e}")
 
     results = []
-    ai_summary_answer = None
-
-    # Query mock database based on parsed intent
+    
+    # Extract search terms
     target_date = parsed_intent.get("target_date")
     speaker_name = parsed_intent.get("speaker_name")
-    keyword = parsed_intent.get("search_keyword")
+    keywords = list(set(
+        parsed_intent.get("keywords_en", []) + 
+        parsed_intent.get("keywords_ru", []) + 
+        parsed_intent.get("keywords_ua", [])
+    ))
     intent_type = parsed_intent.get("intent_type")
+    user_lang = parsed_intent.get("user_language", "ru")
 
     async with db_lock:
         for meeting_id, meeting in MOCK_DB.items():
-            # Date filter (if parsed)
-            if target_date and meeting.get("date") != target_date:
-                # Handle string date matching
+            # Date filter
+            if target_date:
                 m_date = str(meeting.get("date"))
                 if target_date not in m_date:
                     continue
 
-            # Route by intent type
-            if intent_type == "summary" and "summary" in meeting:
-                ai_summary_answer = meeting["summary"].get("brief_content")
-                continue
-                
-            elif intent_type == "decisions" and "summary" in meeting:
-                decisions = meeting["summary"].get("key_decisions", [])
-                if decisions:
-                    ai_summary_answer = "Основные решения:\n" + "\n".join(decisions)
-                continue
-
-            # Search in segments
+            # Load segments
             segments = meeting.get("segments", [])
             for seg in segments:
                 # Speaker filter
@@ -404,20 +401,59 @@ async def search_meetings(
                     if speaker_name.lower() not in seg_speaker:
                         continue
 
-                # Keyword text search
-                if keyword:
-                    text_content = (seg.get("original_text", "") + " " + seg.get("russian_translation", "")).lower()
-                    if keyword.lower() not in text_content:
-                        continue
+                # Match keywords across both original and translation text (Trilingual OR match)
+                matched = False
+                if not keywords:
+                    matched = True  # match all if no keywords
+                else:
+                    text_corpus = (seg.get("original_text", "") + " " + seg.get("russian_translation", "")).lower()
+                    for kw in keywords:
+                        if kw.lower() in text_corpus:
+                            matched = True
+                            break
 
-                results.append({
-                    "meeting_id": meeting_id,
-                    "meeting_title": f"Meeting {meeting_id[:8]}",
-                    "speaker_name": seg.get("speaker", "Unknown"),
-                    "start_time": seg.get("start_time", 0.0),
-                    "text": seg.get("original_text", ""),
-                    "translation": seg.get("russian_translation", "")
-                })
+                if matched:
+                    results.append({
+                        "meeting_id": meeting_id,
+                        "meeting_title": f"Meeting {meeting_id[:8]}",
+                        "speaker_name": seg.get("speaker", "Unknown"),
+                        "start_time": seg.get("start_time", 0.0),
+                        "text": seg.get("original_text", ""),
+                        "translation": seg.get("russian_translation", "")
+                    })
+
+    # RAG Synthesis via OpenRouter if query looks like a direct question
+    ai_summary_answer = None
+    if results:
+        # Build context from matches
+        context_str = "\n".join([
+            f"[{r['speaker_name']} at {r['start_time']}s]: {r['text']} (Transl: {r['translation']})"
+            for r in results[:10]  # Limit context window to top 10 matches
+        ])
+        
+        rag_prompt = (
+            f"You are a helpful meeting AI assistant. Answer the user's question based strictly on the provided transcript segments. "
+            f"Write your response in the user's language: {user_lang}. "
+            f"Be concise. You must embed reference timestamps in format [start_time] (e.g. [5.0] or [12.4]) inline "
+            f"so they match the segments where you found the information. "
+            f"If the answer cannot be found in the provided context, state that clearly."
+        )
+
+        try:
+            payload_rag = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": rag_prompt},
+                    {"role": "user", "content": f"Context:\n{context_str}\n\nQuestion: {q}"}
+                ],
+                "provider": {"data_collection": "deny"}
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response_rag = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload_rag)
+                if response_rag.status_code == 200:
+                    ai_summary_answer = response_rag.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"Error executing RAG synthesis: {e}")
 
     return {
         "intent": parsed_intent,
