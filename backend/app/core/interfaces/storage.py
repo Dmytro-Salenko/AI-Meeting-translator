@@ -39,3 +39,17 @@ class BaseStorageProvider(ABC):
             bytes: The full audio file binary data.
         """
         pass
+
+    @abstractmethod
+    async def download_chunk(self, storage_path: str) -> bytes:
+        """
+        Downloads a single audio chunk from the storage bucket.
+        """
+        pass
+
+    @abstractmethod
+    async def upload_full_audio(self, meeting_id: str, data: bytes) -> str:
+        """
+        Uploads the fully assembled meeting master audio file.
+        """
+        pass

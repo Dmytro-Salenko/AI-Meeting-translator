@@ -51,3 +51,10 @@ class S3StorageProvider(BaseStorageProvider):
                 ContentType="audio/wav"
             )
         return key
+
+    async def download_chunk(self, storage_path: str) -> bytes:
+        """Downloads a single audio chunk from the S3 bucket using the stored key/path."""
+        async with self.session.client("s3", **self.client_kwargs) as s3:
+            response = await s3.get_object(Bucket=self.bucket_name, Key=storage_path)
+            async with response["Body"] as stream:
+                return await stream.read()

@@ -60,6 +60,13 @@ class MockStorageProvider(BaseStorageProvider):
     async def get_full_audio(self, meeting_id: str) -> bytes:
         return b"mock_assembled_audio_data"
 
+    async def download_chunk(self, storage_path: str) -> bytes:
+        # Return mock audio chunk bytes
+        return b"[mock pcm chunk data]"
+
+    async def upload_full_audio(self, meeting_id: str, data: bytes) -> str:
+        return f"meetings/{meeting_id}/final.wav"
+
 
 def get_stt_provider() -> BaseSTTProvider:
     if os.getenv("USE_MOCK_STT", "false").lower() == "true":

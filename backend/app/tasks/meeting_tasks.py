@@ -39,16 +39,17 @@ async def process_full_meeting_async(meeting_id: str):
         for idx in sorted_indices:
             path = chunks[idx]["storage_path"]
             chunk_paths.append(path)
-            # In a production environment with R2:
-            # chunk_bytes = await storage_provider.download_chunk(path)
-            # assembled_audio += chunk_bytes
-            assembled_audio += b" [chunk data] "
+            
+            # Download the real chunk bytes from R2 / Storage Provider
+            chunk_bytes = await storage_provider.download_chunk(path)
+            logger.info(f"Downloaded chunk #{idx} from path '{path}', Size: {len(chunk_bytes)} bytes")
+            assembled_audio += chunk_bytes
 
-        # Assemble full audio and upload to Cloudflare R2
-        # Under S3StorageProvider:
-        # final_path = await storage_provider.assemble_chunks(meeting_id, chunk_paths)
-        final_path = f"meetings/{meeting_id}/final.wav"
-        logger.info(f"Final audio assembled and uploaded to {final_path}")
+        logger.info(f"Successfully concatenated {len(sorted_indices)} chunks. Total assembled audio size: {len(assembled_audio)} bytes")
+
+        # Assemble full audio and upload to Cloudflare R2 / Object Storage
+        final_path = await storage_provider.upload_full_audio(meeting_id, assembled_audio)
+        logger.info(f"Final audio assembled and uploaded to storage path: '{final_path}'")
 
         # 3. Perform WhisperX Speech-to-Text & Diarization on Serverless GPU
         logger.info("Triggering remote GPU serverless diarization...")
