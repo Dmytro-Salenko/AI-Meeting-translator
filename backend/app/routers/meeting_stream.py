@@ -89,6 +89,7 @@ async def websocket_endpoint(
     translation_provider: BaseTranslationProvider = Depends(get_translation_provider)
 ):
     await websocket.accept()
+    print(f"Client connected. MeetingId: {meeting_id}")
     
     # Initialize meeting state in DB if not exists, and move to RECORDING
     try:
@@ -98,9 +99,11 @@ async def websocket_endpoint(
         elif meeting["status"] == "NETWORK_LOST":
             await update_db_meeting_status(meeting_id, "RECORDING_BUFFERING")
     except InvalidStateTransitionError as e:
+        print(f"Invalid state transition for {meeting_id}: {e}")
         await websocket.close(code=4003, reason=str(e))
         return
 
+    chunk_counter = 0
     try:
         while True:
             # Wait for text/binary message
@@ -108,23 +111,20 @@ async def websocket_endpoint(
             
             if "bytes" in message:
                 audio_payload = message["bytes"]
+                chunk_counter += 1
+                print(f"Chunk received. MeetingId: {meeting_id}, Chunk #{chunk_counter}, Size: {len(audio_payload)} bytes")
                 
-                # STT Processing
-                original_text = await stt_provider.transcribe_stream_chunk(audio_payload)
-                
-                # Translation Processing
-                russian_translation = await translation_provider.translate_text(
-                    text=original_text, 
-                    source_lang="auto", 
-                    target_lang="ru"
-                )
-                
-                # Immediate Response to Mobile Client
-                await websocket.send_json({
-                    "original_text": original_text,
-                    "russian_translation": russian_translation,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                # Every 5 chunks, send a simulated segment back to client to verify end-to-end flow
+                if chunk_counter % 5 == 0:
+                    mock_msg = {
+                        "type": "segment",
+                        "speaker": "Speaker 1",
+                        "text": f"Hello from backend (chunk {chunk_counter})",
+                        "translation": f"Привет от бэкенда (чанк {chunk_counter})",
+                        "timestamp": datetime.utcnow().strftime("%H:%M:%S")
+                    }
+                    await websocket.send_json(mock_msg)
+                    print(f"JSON sent: {mock_msg}")
 
             elif "text" in message:
                 # Handle Heartbeats / control signals
@@ -133,6 +133,7 @@ async def websocket_endpoint(
                     await websocket.send_json({"type": "pong"})
                     
     except WebSocketDisconnect:
+        print(f"Client disconnected. MeetingId: {meeting_id}")
         # Automatically update status to NETWORK_LOST upon sudden disconnection
         try:
             meeting = await get_db_meeting(meeting_id)
@@ -141,6 +142,7 @@ async def websocket_endpoint(
         except Exception:
             pass
     except Exception as e:
+        print(f"Unexpected error for {meeting_id}: {e}")
         # Fallback state change to FAILED upon unexpected errors
         try:
             await update_db_meeting_status(meeting_id, "FAILED")

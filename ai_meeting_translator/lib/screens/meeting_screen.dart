@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../services/socket_service.dart';
 import '../services/api_service.dart';
@@ -32,37 +33,8 @@ class _MeetingScreenState extends State<MeetingScreen> {
   late Timer _timer;
   int _secondsElapsed = 0;
 
-  final List<SpeechSegment> _segments = [
-    SpeechSegment(
-      speakerInitials: "C",
-      timestamp: "00:21",
-      text: "Итак, давайте начнем с ключевых целей на этот квартал. Наша основная задача — увеличить удовлетворенность клиентов и сократить время ответа поддержки.",
-      color: const Color(0xFF7F3DFF), // Purple
-    ),
-  ];
-
-  late Timer _mockDataTimer;
-  int _mockIndex = 0;
-  final List<SpeechSegment> _mockSegments = [
-    SpeechSegment(
-      speakerInitials: "M",
-      timestamp: "00:32",
-      text: "Мы также обсудим запуск новой функции и план маркетинговых активностей на следующий месяц.",
-      color: const Color(0xFF3B82F6), // Blue
-    ),
-    SpeechSegment(
-      speakerInitials: "A",
-      timestamp: "00:47",
-      text: "Есть ли вопросы по первому пункту?",
-      color: const Color(0xFFEF4444), // Amber/Orange
-    ),
-    SpeechSegment(
-      speakerInitials: "S",
-      timestamp: "01:05",
-      text: "Да, подскажите, какие метрики поддержки мы будем считать основными?",
-      color: const Color(0xFFF59E0B), // Orange
-    )
-  ];
+  // Screen shows ONLY real data received from the backend
+  final List<SpeechSegment> _segments = [];
 
   @override
   void initState() {
@@ -78,25 +50,23 @@ class _MeetingScreenState extends State<MeetingScreen> {
     _socketService.connect(mockMeetingId);
     _socketService.startRecordingAndStreaming();
 
-    _translationSubscription = _socketService.translationStream.listen((translation) {
-      setState(() {
-        _segments.add(SpeechSegment(
-          speakerInitials: "C",
-          timestamp: _formatTime(_secondsElapsed).substring(3),
-          text: translation,
-          color: const Color(0xFF7F3DFF),
-        ));
-      });
-      _scrollToBottom();
-    });
-
-    _mockDataTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
-      if (_mockIndex < _mockSegments.length) {
-        setState(() {
-          _segments.add(_mockSegments[_mockIndex]);
-          _mockIndex++;
-        });
-        _scrollToBottom();
+    _translationSubscription = _socketService.translationStream.listen((rawMessage) {
+      try {
+        final data = jsonDecode(rawMessage);
+        if (data is Map<String, dynamic> && data["type"] == "segment") {
+          final speaker = data["speaker"] ?? "Speaker 1";
+          setState(() {
+            _segments.add(SpeechSegment(
+              speakerInitials: speaker.toString().isNotEmpty ? speaker.toString().substring(0, 1) : "S",
+              timestamp: data["timestamp"] ?? "00:00",
+              text: data["translation"] ?? data["text"] ?? "",
+              color: const Color(0xFF7F3DFF),
+            ));
+          });
+          _scrollToBottom();
+        }
+      } catch (e) {
+        print("Error parsing socket JSON segment: $e");
       }
     });
   }
@@ -104,7 +74,6 @@ class _MeetingScreenState extends State<MeetingScreen> {
   @override
   void dispose() {
     _timer.cancel();
-    _mockDataTimer.cancel();
     _translationSubscription?.cancel();
     _socketService.dispose();
     _scrollController.dispose();

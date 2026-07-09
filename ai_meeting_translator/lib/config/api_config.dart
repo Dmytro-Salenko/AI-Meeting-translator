@@ -1,4 +1,7 @@
 class ApiConfig {
-  static const String baseUrl = "https://ai-meeting-translator-backend.onrender.com"; // Render REST API URL
-  static const String wsUrl = "wss://ai-meeting-translator-backend.onrender.com/ws/transcribe"; // Render WebSocket URL
+  // Введите IP-адрес вашего компьютера в локальной сети для связи с запущенным FastAPI
+  static const String host = "192.168.1.100"; 
+  
+  static const String baseUrl = "http://$host:8000/api/v1";
+  static const String wsUrl = "ws://$host:8000/api/v1/ws/meeting";
 }

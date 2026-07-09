@@ -23,40 +23,48 @@ class SocketService {
   /// Connects to the WebSocket endpoint with reconnection logic
   Future<void> connect(String meetingId) async {
     _currentMeetingId = meetingId;
-    final uri = Uri.parse("${ApiConfig.wsUrl}?meeting_id=$meetingId");
+    final uri = Uri.parse("${ApiConfig.wsUrl}/$meetingId");
 
     try {
+      print("Connecting to WebSocket: ${uri.toString()}");
       _channel = WebSocketChannel.connect(uri);
       _isConnected = true;
       onConnectionStatusChanged?.call(true);
+      print("WebSocket connected");
 
       // Listen for translation responses from the server
       _channel!.stream.listen(
         (message) {
+          print("Backend message received: $message");
           if (message is String) {
             _translationController.add(message);
           }
         },
         onError: (error) {
+          print("WebSocket error: $error");
           _handleDisconnect();
         },
         onDone: () {
+          print("WebSocket closed onDone");
           _handleDisconnect();
         },
       );
     } catch (e) {
+      print("WebSocket connection failed: $e");
       _handleDisconnect();
     }
   }
 
   /// Handles clean reconnection on network drops
   void _handleDisconnect() {
+    print("Backend disconnected");
     _isConnected = false;
     onConnectionStatusChanged?.call(false);
     _channel = null;
 
     // Retry connection if we are still supposed to be actively recording
     if (_isRecording) {
+      print("Attempting to reconnect in 3 seconds...");
       Future.delayed(const Duration(seconds: 3), () {
         if (_isRecording && !_isConnected) {
           connect(_currentMeetingId);
@@ -70,9 +78,11 @@ class SocketService {
     if (_isRecording) return;
 
     try {
+      print("Requesting microphone permission...");
       // Request microphone permissions
       if (await _recorder.hasPermission()) {
         _isRecording = true;
+        print("Recording started. Format: PCM 16-bit, 16kHz, mono");
 
         // Configure streaming with raw PCM audio at 16kHz, 16bit, mono (ideal for Whisper/STT)
         final recordConfig = const RecordConfig(
@@ -87,21 +97,29 @@ class SocketService {
           (chunk) {
             if (_isConnected && _channel != null) {
               // Send binary PCM chunk over WebSocket
+              print("Chunk sent. Size: ${chunk.length} bytes");
               _channel!.sink.add(Uint8List.fromList(chunk));
+            } else {
+              print("Chunk not sent. Connected: $_isConnected, Channel: ${_channel != null}");
             }
           },
           onError: (err) {
+            print("Recording stream error: $err");
             stopRecordingAndStreaming();
           },
         );
+      } else {
+        print("Microphone permission denied");
       }
     } catch (e) {
+      print("Failed to start recording: $e");
       stopRecordingAndStreaming();
     }
   }
 
   /// Stops audio streaming and closes the WebSocket connection cleanly
   Future<void> stopRecordingAndStreaming() async {
+    print("Recording stopped");
     _isRecording = false;
     _isConnected = false;
     
