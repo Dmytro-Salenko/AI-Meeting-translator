@@ -43,5 +43,8 @@ class Settings(BaseSettings):
     # GPU Worker Configuration
     MODAL_WORKER_URL: str = Field(default="")
 
+    # Groq Live STT Configuration
+    GROQ_API_KEY: str = Field(default="")
+
 
 settings = Settings()

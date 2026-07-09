@@ -6,6 +6,8 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException, Depends
 
 # Import dependencies/interfaces
+from app.core.config import settings
+from app.adapters.groq_stt import GroqSTTProvider
 from app.core.state_machine import MeetingStateMachine, InvalidStateTransitionError
 from app.core.interfaces.stt import BaseSTTProvider
 from app.core.interfaces.translation import BaseTranslationProvider
@@ -61,8 +63,14 @@ class MockStorageProvider(BaseStorageProvider):
 
 def get_stt_provider() -> BaseSTTProvider:
     if os.getenv("USE_MOCK_STT", "false").lower() == "true":
+        print("STT provider selected: MockSTTProvider")
         return MockSTTProvider()
-    return RealSTTProvider()
+    elif settings.GROQ_API_KEY.strip():
+        print("STT provider selected: GroqSTTProvider")
+        return GroqSTTProvider(api_key=settings.GROQ_API_KEY)
+    else:
+        print("STT provider selected: RealSTTProvider (placeholder)")
+        return RealSTTProvider()
 
 
 def get_translation_provider() -> BaseTranslationProvider:
@@ -148,7 +156,20 @@ async def websocket_endpoint(
                     
                     # Determine response based on provider mode
                     if isinstance(stt_provider, RealSTTProvider):
-                        print(f"Real STT mode active: Real STT not configured. Buffer #{chunk_counter // 20} ignored.")
+                        print("Real STT cannot run because STT provider key is missing.")
+                    elif isinstance(stt_provider, GroqSTTProvider):
+                        if not transcript:
+                            print("Empty transcript, segment skipped")
+                        else:
+                            real_msg = {
+                                "type": "segment",
+                                "speaker": "Speaker 1",
+                                "text": transcript,
+                                "translation": transcript,
+                                "timestamp": datetime.utcnow().strftime("%H:%M:%S")
+                            }
+                            await websocket.send_json(real_msg)
+                            print(f"JSON sent: {real_msg}")
                     else:
                         # MockSTT mode fallback
                         mock_msg = {
