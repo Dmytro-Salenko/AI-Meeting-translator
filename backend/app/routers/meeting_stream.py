@@ -21,6 +21,8 @@ MOCK_DB: Dict[str, Dict[str, Any]] = {}
 db_lock = asyncio.Lock()
 
 
+import os
+
 class MockSTTProvider(BaseSTTProvider):
     async def transcribe_stream_chunk(self, audio_chunk: bytes) -> str:
         # Mock speech-to-text response
@@ -28,6 +30,18 @@ class MockSTTProvider(BaseSTTProvider):
 
     async def transcribe_full_audio(self, audio_file_path: str) -> list[dict[str, Any]]:
         return [{"start": 0.0, "end": 2.0, "speaker": "Speaker A", "text": "Hello meeting chunk"}]
+
+
+class RealSTTProvider(BaseSTTProvider):
+    async def transcribe_stream_chunk(self, audio_chunk: bytes) -> str:
+        # Real STT not configured yet. This is a placeholder.
+        # Once WhisperX/Deepgram is ready, it will receive the 3-5 seconds audio buffer here.
+        print("Real STT not configured")
+        return ""
+
+    async def transcribe_full_audio(self, audio_file_path: str) -> list[dict[str, Any]]:
+        print("Real STT batch not configured")
+        return []
 
 
 class MockTranslationProvider(BaseTranslationProvider):
@@ -46,7 +60,9 @@ class MockStorageProvider(BaseStorageProvider):
 
 
 def get_stt_provider() -> BaseSTTProvider:
-    return MockSTTProvider()
+    if os.getenv("USE_MOCK_STT", "false").lower() == "true":
+        return MockSTTProvider()
+    return RealSTTProvider()
 
 
 def get_translation_provider() -> BaseTranslationProvider:
@@ -104,6 +120,11 @@ async def websocket_endpoint(
         return
 
     chunk_counter = 0
+    audio_buffer = bytearray()
+    
+    # 16000 Hz * 2 bytes (pcm16) * 3 seconds = 96000 bytes buffer threshold
+    buffer_threshold_bytes = 96000 
+    
     try:
         while True:
             # Wait for text/binary message
@@ -112,19 +133,33 @@ async def websocket_endpoint(
             if "bytes" in message:
                 audio_payload = message["bytes"]
                 chunk_counter += 1
-                print(f"Chunk received. MeetingId: {meeting_id}, Chunk #{chunk_counter}, Size: {len(audio_payload)} bytes")
+                audio_buffer.extend(audio_payload)
+                print(f"Chunk received. MeetingId: {meeting_id}, Chunk #{chunk_counter}, Size: {len(audio_payload)} bytes, Buffer size: {len(audio_buffer)} bytes")
                 
-                # Every 5 chunks, send a simulated segment back to client to verify end-to-end flow
-                if chunk_counter % 5 == 0:
-                    mock_msg = {
-                        "type": "segment",
-                        "speaker": "Speaker 1",
-                        "text": f"Hello from backend (chunk {chunk_counter})",
-                        "translation": f"Привет от бэкенда (чанк {chunk_counter})",
-                        "timestamp": datetime.utcnow().strftime("%H:%M:%S")
-                    }
-                    await websocket.send_json(mock_msg)
-                    print(f"JSON sent: {mock_msg}")
+                # Check if buffer reached 3 seconds of PCM audio
+                if len(audio_buffer) >= buffer_threshold_bytes:
+                    print(f"Processing accumulated audio buffer of size {len(audio_buffer)} bytes...")
+                    
+                    # Pass the accumulated audio to the STT provider
+                    transcript = await stt_provider.transcribe_stream_chunk(bytes(audio_buffer))
+                    
+                    # Clear the buffer after processing
+                    audio_buffer.clear()
+                    
+                    # Determine response based on provider mode
+                    if isinstance(stt_provider, RealSTTProvider):
+                        print(f"Real STT mode active: Real STT not configured. Buffer #{chunk_counter // 20} ignored.")
+                    else:
+                        # MockSTT mode fallback
+                        mock_msg = {
+                            "type": "segment",
+                            "speaker": "Speaker 1",
+                            "text": f"Hello from backend (buffer #{chunk_counter // 20})",
+                            "translation": f"Привет от бэкенда (буфер #{chunk_counter // 20})",
+                            "timestamp": datetime.utcnow().strftime("%H:%M:%S")
+                        }
+                        await websocket.send_json(mock_msg)
+                        print(f"JSON sent (Mock STT active): {mock_msg}")
 
             elif "text" in message:
                 # Handle Heartbeats / control signals
