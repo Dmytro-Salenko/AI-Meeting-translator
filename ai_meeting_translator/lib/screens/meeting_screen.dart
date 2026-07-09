@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/socket_service.dart';
+import '../services/api_service.dart';
 
 class MeetingScreen extends StatefulWidget {
   const MeetingScreen({Key? key}) : super(key: key);
@@ -24,6 +26,9 @@ class SpeechSegment {
 
 class _MeetingScreenState extends State<MeetingScreen> {
   final ScrollController _scrollController = ScrollController();
+  final SocketService _socketService = SocketService();
+  final ApiService _apiService = ApiService();
+  StreamSubscription? _translationSubscription;
   late Timer _timer;
   int _secondsElapsed = 0;
 
@@ -68,7 +73,24 @@ class _MeetingScreenState extends State<MeetingScreen> {
       });
     });
 
-    _mockDataTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+    // Start WebSocket Live transcription sync
+    final String mockMeetingId = "meeting_${DateTime.now().millisecondsSinceEpoch}";
+    _socketService.connect(mockMeetingId);
+    _socketService.startRecordingAndStreaming();
+
+    _translationSubscription = _socketService.translationStream.listen((translation) {
+      setState(() {
+        _segments.add(SpeechSegment(
+          speakerInitials: "C",
+          timestamp: _formatTime(_secondsElapsed).substring(3),
+          text: translation,
+          color: const Color(0xFF7F3DFF),
+        ));
+      });
+      _scrollToBottom();
+    });
+
+    _mockDataTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
       if (_mockIndex < _mockSegments.length) {
         setState(() {
           _segments.add(_mockSegments[_mockIndex]);
@@ -83,6 +105,8 @@ class _MeetingScreenState extends State<MeetingScreen> {
   void dispose() {
     _timer.cancel();
     _mockDataTimer.cancel();
+    _translationSubscription?.cancel();
+    _socketService.dispose();
     _scrollController.dispose();
     super.dispose();
   }
