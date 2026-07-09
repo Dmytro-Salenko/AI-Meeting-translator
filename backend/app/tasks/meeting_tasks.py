@@ -1,3 +1,4 @@
+import struct
 import asyncio
 import logging
 from typing import List, Dict, Any
@@ -7,6 +8,35 @@ from app.adapters.modal_worker import ModalGPUWorkerAdapter
 from app.routers.meeting_stream import get_db_meeting, update_db_meeting_status, MOCK_DB
 
 logger = logging.getLogger("meeting_tasks")
+
+def _wrap_pcm_to_wav(pcm_data: bytes) -> bytes:
+    """
+    Wraps raw PCM audio bytes with a standard 44-byte WAV RIFF header.
+    Configuration: 16000Hz sample rate, 16-bit depth, mono channel.
+    """
+    sample_rate = 16000
+    channels = 1
+    bit_depth = 16
+    byte_rate = (sample_rate * channels * bit_depth) // 8
+    block_align = (channels * bit_depth) // 8
+
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        36 + len(pcm_data),
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,            # Audio format (1 = PCM)
+        channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bit_depth,
+        b'data',
+        len(pcm_data)
+    )
+    return header + pcm_data
 
 
 async def process_full_meeting_async(meeting_id: str):
@@ -48,8 +78,9 @@ async def process_full_meeting_async(meeting_id: str):
         logger.info(f"Successfully concatenated {len(sorted_indices)} chunks. Total assembled audio size: {len(assembled_audio)} bytes")
 
         # Assemble full audio and upload to Cloudflare R2 / Object Storage
-        final_path = await storage_provider.upload_full_audio(meeting_id, assembled_audio)
-        logger.info(f"Final audio assembled and uploaded to storage path: '{final_path}'")
+        wav_audio_data = _wrap_pcm_to_wav(assembled_audio)
+        final_path = await storage_provider.upload_full_audio(meeting_id, wav_audio_data)
+        logger.info(f"Final audio WAV assembled (WAV size: {len(wav_audio_data)} bytes) and uploaded to storage path: '{final_path}'")
 
         # 3. Perform WhisperX Speech-to-Text & Diarization on Serverless GPU
         logger.info("Triggering remote GPU serverless diarization...")
