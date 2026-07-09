@@ -46,7 +46,10 @@ class _MeetingScreenState extends State<MeetingScreen> {
     });
 
     // Start WebSocket Live transcription sync
+    print("START pressed");
     final String mockMeetingId = "meeting_${DateTime.now().millisecondsSinceEpoch}";
+    print("meetingId created: $mockMeetingId");
+    
     _socketService.connect(mockMeetingId);
     _socketService.startRecordingAndStreaming();
 
@@ -63,6 +66,7 @@ class _MeetingScreenState extends State<MeetingScreen> {
               color: const Color(0xFF7F3DFF),
             ));
           });
+          print("segment added to UI");
           _scrollToBottom();
         }
       } catch (e) {
@@ -282,6 +286,7 @@ class _MeetingScreenState extends State<MeetingScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 48.0, vertical: 16.0),
               child: GestureDetector(
                 onTap: () {
+                  print("STOP pressed");
                   Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
                 },
                 child: Container(

@@ -23,10 +23,11 @@ class SocketService {
   /// Connects to the WebSocket endpoint with reconnection logic
   Future<void> connect(String meetingId) async {
     _currentMeetingId = meetingId;
-    final uri = Uri.parse("${ApiConfig.wsUrl}/$meetingId");
+    final wsUrlString = ApiConfig.meetingWsUrl(meetingId);
+    final uri = Uri.parse(wsUrlString);
 
     try {
-      print("Connecting to WebSocket: ${uri.toString()}");
+      print("WebSocket URL: $wsUrlString");
       _channel = WebSocketChannel.connect(uri);
       _isConnected = true;
       onConnectionStatusChanged?.call(true);
@@ -45,7 +46,7 @@ class SocketService {
           _handleDisconnect();
         },
         onDone: () {
-          print("WebSocket closed onDone");
+          print("WebSocket closed");
           _handleDisconnect();
         },
       );
@@ -79,10 +80,10 @@ class SocketService {
 
     try {
       print("Requesting microphone permission...");
-      // Request microphone permissions
       if (await _recorder.hasPermission()) {
+        print("microphone permission granted");
         _isRecording = true;
-        print("Recording started. Format: PCM 16-bit, 16kHz, mono");
+        print("recording started");
 
         // Configure streaming with raw PCM audio at 16kHz, 16bit, mono (ideal for Whisper/STT)
         final recordConfig = const RecordConfig(
