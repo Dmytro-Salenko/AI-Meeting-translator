@@ -145,8 +145,17 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> with SingleTi
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: const [
-                          Text("Длительность: 15 минут", style: TextStyle(color: Colors.white70, fontFamily: 'Inter', fontSize: 13)),
-                          Text("Участники: Dmitry, David", style: TextStyle(color: Color(0xFF3B82F6), fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.bold)),
+                          Expanded(
+                            child: Text("Длительность: 15 минут", style: TextStyle(color: Colors.white70, fontFamily: 'Inter', fontSize: 13)),
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "Участники: Dmitry, David",
+                              textAlign: TextAlign.end,
+                              style: TextStyle(color: Color(0xFF3B82F6), fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ],
                       ),
                     ],

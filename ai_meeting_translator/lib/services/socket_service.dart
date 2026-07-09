@@ -8,9 +8,11 @@ class SocketService {
   WebSocketChannel? _channel;
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<List<int>>? _recordSubscription;
+  StreamSubscription? _socketSubscription;
   
   bool _isConnected = false;
   bool _isRecording = false;
+  bool _isDisposed = false;
   String _currentMeetingId = "";
   
   // Stream controller to broadcast received translations to UI
@@ -34,10 +36,10 @@ class SocketService {
       print("WebSocket connected");
 
       // Listen for translation responses from the server
-      _channel!.stream.listen(
+      _socketSubscription = _channel!.stream.listen(
         (message) {
           print("Backend message received: $message");
-          if (message is String) {
+          if (!_isDisposed && !_translationController.isClosed && message is String) {
             _translationController.add(message);
           }
         },
@@ -120,21 +122,31 @@ class SocketService {
 
   /// Stops audio streaming and closes the WebSocket connection cleanly
   Future<void> stopRecordingAndStreaming() async {
-    print("Recording stopped");
-    _isRecording = false;
-    _isConnected = false;
-    
+    // 1. Stop audio stream subscription first to prevent sending any further chunks
     await _recordSubscription?.cancel();
     _recordSubscription = null;
     
+    // 2. Await recorder cleanup
     await _recorder.stop();
+    
+    // 3. Cancel WebSocket stream subscription to stop processing incoming socket messages
+    await _socketSubscription?.cancel();
+    _socketSubscription = null;
+    
+    // 4. Close WebSocket sink cleanly
     await _channel?.sink.close();
     _channel = null;
     
+    // 5. Mark session and connections as inactive
+    _isRecording = false;
+    _isConnected = false;
+    
     onConnectionStatusChanged?.call(false);
+    print("Recording stopped");
   }
 
   void dispose() {
+    _isDisposed = true;
     stopRecordingAndStreaming();
     _translationController.close();
   }

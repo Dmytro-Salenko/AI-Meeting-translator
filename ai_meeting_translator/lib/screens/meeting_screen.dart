@@ -285,9 +285,12 @@ class _MeetingScreenState extends State<MeetingScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 48.0, vertical: 16.0),
               child: GestureDetector(
-                onTap: () {
+                onTap: () async {
                   print("STOP pressed");
-                  Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
+                  await _socketService.stopRecordingAndStreaming();
+                  if (mounted) {
+                    Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
+                  }
                 },
                 child: Container(
                   height: 52, // Made smaller (52 instead of 64)
