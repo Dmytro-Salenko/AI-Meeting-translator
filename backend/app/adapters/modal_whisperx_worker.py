@@ -74,6 +74,136 @@ def process_meeting_async(meeting_id: str):
     # Объединяем текст и разделенные голоса вместе
     final_result = whisperx.assign_word_speakers(diarize_segments, result)
     
+    print("👥 Вычисляем embeddings для спикеров...")
+    # Инициализируем модель speaker embedding
+    from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+    import numpy as np
+    
+    embedding_model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb", device=device)
+    
+    # 1. Группируем сегменты по локальным меткам SPEAKER_XX
+    speaker_segments = {}
+    for segment in final_result["segments"]:
+        label = segment.get("speaker")
+        if label:
+            if label not in speaker_segments:
+                speaker_segments[label] = []
+            speaker_segments[label].append(segment)
+            
+    # 2. Вычисляем centroid для каждого спикера
+    # Порог 0.75 выбран как стартовый ориентир для косинусного сходства векторов модели ECAPA-TDNN (требует калибровки)
+    SIMILARITY_THRESHOLD = 0.75
+    
+    # Загружаем всех существующих спикеров из базы
+    try:
+        existing_speakers_res = supabase.table("speakers").select("user_assigned_name", "voiceprint_metadata").execute()
+        existing_speakers = existing_speakers_res.data or []
+    except Exception as e:
+        print(f"Ошибка чтения существующих спикеров из БД: {e}")
+        existing_speakers = []
+        
+    speaker_mappings = {} # Локальный лейбл -> {"profile_id": ..., "name": ...}
+    
+    for label, segments in speaker_segments.items():
+        # Выбираем от 3 до 5 самых длинных аудиосегментов
+        sorted_segs = sorted(segments, key=lambda s: s["end"] - s["start"], reverse=True)
+        target_segs = sorted_segs[:5]
+        
+        embeddings = []
+        for seg in target_segs:
+            start_sample = int(seg["start"] * 16000)
+            end_sample = int(seg["end"] * 16000)
+            seg_audio = audio[start_sample:end_sample]
+            
+            # Проверяем, что сегмент достаточно длинный (не менее 0.1 секунды)
+            if len(seg_audio) >= 1600:
+                seg_tensor = torch.from_numpy(seg_audio).unsqueeze(0).unsqueeze(0).to(device) # shape (1, 1, samples)
+                with torch.no_grad():
+                    try:
+                        emb = embedding_model(seg_tensor)
+                    except Exception:
+                        emb = embedding_model(seg_tensor.squeeze(1))
+                    embeddings.append(emb.cpu().numpy().flatten())
+                    
+        if not embeddings:
+            print(f"Спикер {label}: Нет подходящих аудиофрагментов для извлечения эмбеддингов")
+            continue
+            
+        print(f"Спикер {label}: embedding created. Число сегментов: {len(embeddings)}")
+        
+        # Усредняем эмбеддинги в centroid и нормализуем его
+        centroid = np.mean(embeddings, axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
+        
+        # Сравниваем с ранее сохраненными спикерами
+        best_similarity = -1.0
+        best_match = None
+        
+        for spk in existing_speakers:
+            metadata = spk.get("voiceprint_metadata")
+            if metadata and isinstance(metadata, dict) and "embedding" in metadata:
+                saved_emb = np.array(metadata["embedding"])
+                # Косинусное сходство нормализованных векторов - это скалярное произведение
+                sim = float(np.dot(centroid, saved_emb))
+                if sim > best_similarity:
+                    best_similarity = sim
+                    best_match = spk
+                    
+        print(f"Спикер {label}: Best similarity score: {best_similarity:.4f}")
+        
+        # Принимаем решение о сопоставлении
+        if best_similarity >= SIMILARITY_THRESHOLD and best_match:
+            matched_profile_id = best_match["voiceprint_metadata"]["profile_id"]
+            matched_name = best_match["user_assigned_name"]
+            print(f"Спикер {label}: matched existing speaker '{matched_name}' (ID: {matched_profile_id})")
+            
+            # Создаем новую запись в speakers для привязки к текущему митингу
+            supabase.table("speakers").insert({
+                "meeting_id": meeting_id,
+                "user_assigned_name": matched_name,
+                "voiceprint_metadata": {
+                    "embedding": centroid.tolist(),
+                    "model": "speechbrain/spkrec-ecapa-voxceleb",
+                    "dimension": 192,
+                    "profile_id": matched_profile_id
+                }
+            }).execute()
+            
+            speaker_mappings[label] = {
+                "profile_id": matched_profile_id,
+                "name": matched_name
+            }
+        else:
+            print(f"Спикер {label}: совпадений не найдено. Создаем нового спикера.")
+            # Регистрируем новый глобальный профиль
+            # Для обеспечения уникальности voice_fingerprint используем строку встречи и лейбла
+            unique_fingerprint = f"{meeting_id}_{label}"
+            new_name = f"Новый спикер ({label})"
+            
+            new_profile_res = supabase.table("profiles").insert({
+                "name": new_name,
+                "voice_fingerprint": unique_fingerprint
+            }).execute()
+            
+            profile_id = new_profile_res.data[0]["id"]
+            
+            # Регистрируем спикера во встрече
+            supabase.table("speakers").insert({
+                "meeting_id": meeting_id,
+                "user_assigned_name": new_name,
+                "voiceprint_metadata": {
+                    "embedding": centroid.tolist(),
+                    "model": "speechbrain/spkrec-ecapa-voxceleb",
+                    "dimension": 192,
+                    "profile_id": profile_id
+                }
+            }).execute()
+            
+            speaker_mappings[label] = {
+                "profile_id": profile_id,
+                "name": new_name
+            }
+
     print("💾 Запись результатов в базу данных Supabase...")
     # Шаг E. Построчно сохраняем сегменты в таблицу `meeting_segments`
     for segment in final_result["segments"]:
@@ -82,19 +212,13 @@ def process_meeting_async(meeting_id: str):
         text = segment["text"]
         speaker_label = segment.get("speaker", "Speaker X")
         
-        # Логика интеграции с домашней базой профилей участников
-        # Сначала проверяем, есть ли уже этот спикер в таблице `profiles`
-        profile_res = supabase.table("profiles").select("id").eq("voice_fingerprint", speaker_label).execute()
-        
-        if profile_res.data:
-            speaker_id = profile_res.data[0]["id"]
+        # Получаем привязанный на предыдущем шаге глобальный profile_id
+        mapping = speaker_mappings.get(speaker_label)
+        if mapping:
+            speaker_id = mapping["profile_id"]
         else:
-            # Создаем новый профиль для нового голоса, если его еще не было
-            new_profile = supabase.table("profiles").insert({
-                "name": f"Новый спикер ({speaker_label})",
-                "voice_fingerprint": speaker_label
-            }).execute()
-            speaker_id = new_profile.data[0]["id"]
+            # Fallback на случай отсутствия эмбеддинга (например, слишком короткая реплика)
+            speaker_id = None
             
         # Отправляем готовую строчку текста встречи в базу данных
         supabase.table("meeting_segments").insert({
