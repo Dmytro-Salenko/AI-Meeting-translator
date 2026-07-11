@@ -144,6 +144,8 @@ async def websocket_endpoint(
         while True:
             # Wait for text/binary message
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect(code=message.get("code", 1000))
             
             if "bytes" in message:
                 audio_payload = message["bytes"]
