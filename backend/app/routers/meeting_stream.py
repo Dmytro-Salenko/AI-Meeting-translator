@@ -36,13 +36,57 @@ class MockSTTProvider(BaseSTTProvider):
 
 class RealSTTProvider(BaseSTTProvider):
     async def transcribe_stream_chunk(self, audio_chunk: bytes) -> str:
-        # Real STT not configured yet. This is a placeholder.
-        # Once WhisperX/Deepgram is ready, it will receive the 3-5 seconds audio buffer here.
-        print("Real STT not configured")
+        # Real STT cannot run because STT provider key is missing.
+        print("Real STT cannot run because STT provider key is missing. Please configure GROQ_API_KEY or DEEPGRAM_API_KEY in .env")
         return ""
 
     async def transcribe_full_audio(self, audio_file_path: str) -> list[dict[str, Any]]:
         print("Real STT batch not configured")
+        return []
+
+
+class ModalLiveSTTProvider(BaseSTTProvider):
+    async def transcribe_stream_chunk(self, audio_chunk: bytes) -> str:
+        import struct
+        import modal
+
+        # Wrap raw PCM 16kHz mono 16-bit to WAV
+        sample_rate = 16000
+        channels = 1
+        bit_depth = 16
+        byte_rate = (sample_rate * channels * bit_depth) // 8
+        block_align = (channels * bit_depth) // 8
+
+        header = struct.pack(
+            '<4sI4s4sIHHIIHH4sI',
+            b'RIFF',
+            36 + len(audio_chunk),
+            b'WAVE',
+            b'fmt ',
+            16,
+            1,            # Audio format (1 = PCM)
+            channels,
+            sample_rate,
+            byte_rate,
+            block_align,
+            bit_depth,
+            b'data',
+            len(audio_chunk)
+        )
+        wav_data = header + audio_chunk
+
+        print("Calling remote Modal live transcription...")
+        try:
+            remote_fn = modal.Function.lookup("ai-meeting-processor", "transcribe_live_chunk")
+            # Invoke remote function synchronously
+            transcript = remote_fn.remote(wav_data)
+            print(f"Modal live transcript received: '{transcript}'")
+            return transcript
+        except Exception as e:
+            print(f"Modal live STT error: {e}")
+            return ""
+
+    async def transcribe_full_audio(self, audio_file_path: str) -> list[dict[str, Any]]:
         return []
 
 
@@ -76,8 +120,8 @@ def get_stt_provider() -> BaseSTTProvider:
         print("STT provider selected: GroqSTTProvider")
         return GroqSTTProvider(api_key=settings.GROQ_API_KEY)
     else:
-        print("STT provider selected: RealSTTProvider (placeholder)")
-        return RealSTTProvider()
+        print("STT provider selected: ModalLiveSTTProvider")
+        return ModalLiveSTTProvider()
 
 
 def get_translation_provider() -> BaseTranslationProvider:
@@ -166,15 +210,21 @@ async def websocket_endpoint(
                     # Determine response based on provider mode
                     if isinstance(stt_provider, RealSTTProvider):
                         print("Real STT cannot run because STT provider key is missing.")
-                    elif isinstance(stt_provider, GroqSTTProvider):
+                    elif isinstance(stt_provider, ModalLiveSTTProvider) or isinstance(stt_provider, GroqSTTProvider):
                         if not transcript:
                             print("Empty transcript, segment skipped")
                         else:
+                            # Translate using existing translation provider
+                            translation = await translation_provider.translate_text(
+                                text=transcript,
+                                source_lang="auto",
+                                target_lang="ru"
+                            )
                             real_msg = {
                                 "type": "segment",
                                 "speaker": "Speaker 1",
                                 "text": transcript,
-                                "translation": transcript,
+                                "translation": translation,
                                 "timestamp": datetime.utcnow().strftime("%H:%M:%S")
                             }
                             await websocket.send_json(real_msg)
