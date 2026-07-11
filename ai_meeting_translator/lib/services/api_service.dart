@@ -32,15 +32,8 @@ class ApiService {
 
   /// Stops meeting recording, triggers offloading buffer check & server post-processing
   Future<Map<String, dynamic>> stopMeeting(String meetingId) async {
-    try {
-      final response = await _dio.post("/meetings/$meetingId/stop");
-      return response.data as Map<String, dynamic>;
-    } catch (e) {
-      return {
-        "status": "recording_stopped",
-        "message": "Встреча отправлена на ИИ-обработку",
-      };
-    }
+    final response = await _dio.post("/api/meeting/$meetingId/stop");
+    return response.data as Map<String, dynamic>;
   }
 
   /// Uploads meeting data (metadata, transcription, summary) after completion
