@@ -29,6 +29,7 @@ class _MeetingScreenState extends State<MeetingScreen> {
   final ScrollController _scrollController = ScrollController();
   final SocketService _socketService = SocketService();
   final ApiService _apiService = ApiService();
+  late String _meetingId;
   StreamSubscription? _translationSubscription;
   late Timer _timer;
   int _secondsElapsed = 0;
@@ -47,10 +48,10 @@ class _MeetingScreenState extends State<MeetingScreen> {
 
     // Start WebSocket Live transcription sync
     print("START pressed");
-    final String mockMeetingId = "meeting_${DateTime.now().millisecondsSinceEpoch}";
-    print("meetingId created: $mockMeetingId");
+    _meetingId = "meeting_${DateTime.now().millisecondsSinceEpoch}";
+    print("meetingId created: $_meetingId");
     
-    _socketService.connect(mockMeetingId);
+    _socketService.connect(_meetingId);
     _socketService.startRecordingAndStreaming();
 
     _translationSubscription = _socketService.translationStream.listen((rawMessage) {
@@ -288,8 +289,17 @@ class _MeetingScreenState extends State<MeetingScreen> {
                 onTap: () async {
                   print("STOP pressed");
                   await _socketService.stopRecordingAndStreaming();
-                  if (mounted) {
-                    Navigator.pushReplacementNamed(context, '/details', arguments: 'meeting_demo');
+                  
+                  try {
+                    print("Stop API request started for $_meetingId");
+                    final res = await _apiService.stopMeeting(_meetingId);
+                    print("Stop API response: $res");
+                    
+                    if (mounted) {
+                      Navigator.pushReplacementNamed(context, '/details', arguments: _meetingId);
+                    }
+                  } catch (e) {
+                    print("Stop API error: $e");
                   }
                 },
                 child: Container(
