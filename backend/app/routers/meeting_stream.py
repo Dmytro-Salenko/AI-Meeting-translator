@@ -137,7 +137,10 @@ def get_stt_provider() -> BaseSTTProvider:
 
 
 def get_translation_provider() -> BaseTranslationProvider:
-    return MockTranslationProvider()
+    from app.core.dependencies import get_translation_provider as get_real_provider
+    provider = get_real_provider()
+    print(f"Translation provider selected: {provider.__class__.__name__}")
+    return provider
 
 
 def get_storage_provider() -> BaseStorageProvider:
@@ -227,11 +230,18 @@ async def websocket_endpoint(
                             print("Empty transcript, segment skipped")
                         else:
                             # Translate using existing translation provider
-                            translation = await translation_provider.translate_text(
-                                text=transcript,
-                                source_lang="auto",
-                                target_lang="ru"
-                            )
+                            print("Translation request started")
+                            try:
+                                translation = await translation_provider.translate_text(
+                                    text=transcript,
+                                    source_lang="auto",
+                                    target_lang="ru"
+                                )
+                                print(f"Translation result: {translation}")
+                            except Exception as trans_err:
+                                print(f"Translation failed: {trans_err}")
+                                translation = transcript  # safe fallback
+                                
                             real_msg = {
                                 "type": "segment",
                                 "speaker": "Speaker 1",
@@ -240,7 +250,7 @@ async def websocket_endpoint(
                                 "timestamp": datetime.utcnow().strftime("%H:%M:%S")
                             }
                             await websocket.send_json(real_msg)
-                            print(f"JSON sent: {real_msg}")
+                            print(f"JSON sent to Flutter: {real_msg}")
                     else:
                         # MockSTT mode fallback
                         mock_msg = {
