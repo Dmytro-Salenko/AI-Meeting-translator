@@ -49,8 +49,8 @@ def process_meeting_async(meeting_id: str):
     )
     
     # Шаг A. Скачиваем аудиофайл встречи из Cloudflare R2 во временную память видеокарты
-    local_audio_path = f"/tmp/{meeting_id}.mp3"
-    object_key = f"meetings/{meeting_id}/final_audio.mp3"
+    local_audio_path = f"/tmp/{meeting_id}.wav"
+    object_key = f"meetings/{meeting_id}/final.wav"
     
     print("📥 Скачиваем аудиозапись из Cloudflare R2...")
     s3_client.download_file(r2_bucket, object_key, local_audio_path)

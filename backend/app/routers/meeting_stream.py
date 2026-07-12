@@ -22,6 +22,25 @@ router = APIRouter()
 MOCK_DB: Dict[str, Dict[str, Any]] = {}
 db_lock = asyncio.Lock()
 
+class MeetingSession:
+    """
+    State representing an active live meeting streaming session.
+    WARNING: Storing the entire raw PCM buffer in RAM (full_audio_buffer) 
+    is a temporary MVP solution and can exhaust system memory on high concurrent loads.
+    """
+    def __init__(self, meeting_id: str):
+        self.meeting_id = meeting_id
+        self.full_audio_buffer = bytearray()
+        self.live_audio_buffer = bytearray()
+        self.stt_queue = asyncio.Queue()
+        self.worker_task = None
+        self.websocket = None
+        self.lock = asyncio.Lock()
+        self.is_stopped = False
+
+meeting_sessions: Dict[str, MeetingSession] = {}
+sessions_lock = asyncio.Lock()
+
 
 import os
 
@@ -167,6 +186,57 @@ async def update_db_meeting_status(meeting_id: str, new_status: str) -> None:
             meeting["status"] = new_status
 
 
+import time
+
+async def stt_worker(session: MeetingSession, stt_provider: BaseSTTProvider, translation_provider: BaseTranslationProvider):
+    print(f"STT worker started: {session.meeting_id}")
+    try:
+        while True:
+            chunk = await session.stt_queue.get()
+            start_time = time.time()
+            try:
+                transcript = await stt_provider.transcribe_stream_chunk(chunk)
+                if not transcript:
+                    print("Empty transcript, segment skipped")
+                    continue
+                
+                try:
+                    translation = await translation_provider.translate_text(
+                        text=transcript,
+                        source_lang="auto",
+                        target_lang="ru"
+                    )
+                except Exception as trans_err:
+                    print(f"Translation failed: {trans_err}")
+                    translation = transcript
+                
+                real_msg = {
+                    "type": "segment",
+                    "speaker": "Speaker 1",
+                    "text": transcript,
+                    "translation": translation,
+                    "timestamp": datetime.utcnow().strftime("%H:%M:%S")
+                }
+                
+                async with session.lock:
+                    if session.websocket and not session.is_stopped:
+                        try:
+                            await session.websocket.send_json(real_msg)
+                        except Exception as send_err:
+                            print(f"Failed to send JSON to WebSocket: {send_err}")
+                
+                duration = time.time() - start_time
+                print(f"STT block processed in {duration:.3f}s")
+            except Exception as block_err:
+                print(f"Error processing block in STT worker: {block_err}")
+            finally:
+                session.stt_queue.task_done()
+    except asyncio.CancelledError:
+        print(f"STT worker stopped: {session.meeting_id}")
+        raise
+    except Exception as e:
+        print(f"STT worker unexpected error: {e}")
+
 # --------------------------------------------------------------------------
 # WEBSOCKET & HTTP ENDPOINTS
 # --------------------------------------------------------------------------
@@ -179,9 +249,28 @@ async def websocket_endpoint(
     translation_provider: BaseTranslationProvider = Depends(get_translation_provider)
 ):
     await websocket.accept()
-    print(f"Client connected. MeetingId: {meeting_id}")
     
-    # Initialize meeting state in DB if not exists, and move to RECORDING
+    async with sessions_lock:
+        if meeting_id not in meeting_sessions:
+            session = MeetingSession(meeting_id)
+            meeting_sessions[meeting_id] = session
+            print(f"WebSocket registered: {meeting_id}")
+        else:
+            session = meeting_sessions[meeting_id]
+            if session.websocket is not None:
+                print(f"Duplicate socket replaced: {meeting_id}")
+                try:
+                    await session.websocket.close(code=4000, reason="Duplicate connection replaced")
+                except Exception:
+                    pass
+        
+        session.websocket = websocket
+        
+        if session.worker_task is None or session.worker_task.done():
+            session.worker_task = asyncio.create_task(
+                stt_worker(session, stt_provider, translation_provider)
+            )
+
     try:
         meeting = await get_db_meeting(meeting_id)
         if meeting["status"] == "CREATED":
@@ -193,85 +282,44 @@ async def websocket_endpoint(
         await websocket.close(code=4003, reason=str(e))
         return
 
-    chunk_counter = 0
-    audio_buffer = bytearray()
-    
-    # 16000 Hz * 2 bytes (pcm16) * 3 seconds = 96000 bytes buffer threshold
-    buffer_threshold_bytes = 96000 
+    buffer_threshold_bytes = 97280 
     
     try:
         while True:
-            # Wait for text/binary message
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect(code=message.get("code", 1000))
             
             if "bytes" in message:
                 audio_payload = message["bytes"]
-                chunk_counter += 1
-                audio_buffer.extend(audio_payload)
-                print(f"Chunk received. MeetingId: {meeting_id}, Chunk #{chunk_counter}, Size: {len(audio_payload)} bytes, Buffer size: {len(audio_buffer)} bytes")
                 
-                # Check if buffer reached 3 seconds of PCM audio
-                if len(audio_buffer) >= buffer_threshold_bytes:
-                    print(f"Processing accumulated audio buffer of size {len(audio_buffer)} bytes...")
+                async with session.lock:
+                    if session.is_stopped:
+                        continue
                     
-                    # Pass the accumulated audio to the STT provider
-                    transcript = await stt_provider.transcribe_stream_chunk(bytes(audio_buffer))
+                    session.full_audio_buffer.extend(audio_payload)
+                    session.live_audio_buffer.extend(audio_payload)
                     
-                    # Clear the buffer after processing
-                    audio_buffer.clear()
-                    
-                    # Determine response based on provider mode
-                    if isinstance(stt_provider, RealSTTProvider):
-                        print("Real STT cannot run because STT provider key is missing.")
-                    elif isinstance(stt_provider, ModalLiveSTTProvider) or isinstance(stt_provider, GroqSTTProvider):
-                        if not transcript:
-                            print("Empty transcript, segment skipped")
-                        else:
-                            # Translate using existing translation provider
-                            print("Translation request started")
-                            try:
-                                translation = await translation_provider.translate_text(
-                                    text=transcript,
-                                    source_lang="auto",
-                                    target_lang="ru"
-                                )
-                                print(f"Translation result: {translation}")
-                            except Exception as trans_err:
-                                print(f"Translation failed: {trans_err}")
-                                translation = transcript  # safe fallback
-                                
-                            real_msg = {
-                                "type": "segment",
-                                "speaker": "Speaker 1",
-                                "text": transcript,
-                                "translation": translation,
-                                "timestamp": datetime.utcnow().strftime("%H:%M:%S")
-                            }
-                            await websocket.send_json(real_msg)
-                            print(f"JSON sent to Flutter: {real_msg}")
-                    else:
-                        # MockSTT mode fallback
-                        mock_msg = {
-                            "type": "segment",
-                            "speaker": "Speaker 1",
-                            "text": f"Hello from backend (buffer #{chunk_counter // 20})",
-                            "translation": f"Привет от бэкенда (буфер #{chunk_counter // 20})",
-                            "timestamp": datetime.utcnow().strftime("%H:%M:%S")
-                        }
-                        await websocket.send_json(mock_msg)
-                        print(f"JSON sent (Mock STT active): {mock_msg}")
+                    if len(session.live_audio_buffer) >= buffer_threshold_bytes:
+                        block_copy = bytes(session.live_audio_buffer)
+                        session.live_audio_buffer.clear()
+                        
+                        await session.stt_queue.put(block_copy)
+                        
+                        queue_size = session.stt_queue.qsize()
+                        print(f"Live block queued: {queue_size}")
+                        print(f"Full PCM size: {len(session.full_audio_buffer)}")
 
             elif "text" in message:
-                # Handle Heartbeats / control signals
                 data = json.loads(message["text"])
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
                     
     except WebSocketDisconnect:
         print(f"Client disconnected. MeetingId: {meeting_id}")
-        # Automatically update status to NETWORK_LOST upon sudden disconnection
+        async with session.lock:
+            if session.websocket == websocket:
+                session.websocket = None
         try:
             meeting = await get_db_meeting(meeting_id)
             if meeting["status"] in ["RECORDING", "RECORDING_BUFFERING"]:
@@ -280,9 +328,13 @@ async def websocket_endpoint(
             pass
     except Exception as e:
         print(f"Unexpected error for {meeting_id}: {e}")
-        # Fallback state change to FAILED upon unexpected errors
+        async with session.lock:
+            if session.websocket == websocket:
+                session.websocket = None
         try:
-            await update_db_meeting_status(meeting_id, "FAILED")
+            meeting = await get_db_meeting(meeting_id)
+            if meeting["status"] in ["RECORDING", "RECORDING_BUFFERING"]:
+                await update_db_meeting_status(meeting_id, "FAILED")
         except Exception:
             pass
         await websocket.close(code=4000, reason=str(e))
@@ -333,7 +385,6 @@ async def upload_chunk(
             "checksum": checksum,
             "status": "uploaded"
         }
-
     return {
         "status": "success",
         "chunk_index": chunk_index,
@@ -343,62 +394,129 @@ async def upload_chunk(
 
 @router.post("/api/meeting/{meeting_id}/stop")
 async def stop_meeting(
-    meeting_id: str
+    meeting_id: str,
+    storage_provider: BaseStorageProvider = Depends(get_storage_provider)
 ):
-    meeting = await get_db_meeting(meeting_id)
+    print(f"STOP processing started: {meeting_id}")
     
-    # Move status to UPLOAD_FINALIZING
+    async with sessions_lock:
+        session = meeting_sessions.get(meeting_id)
+        
+    if not session:
+        raise HTTPException(status_code=400, detail="Active meeting session not found")
+        
+    async with session.lock:
+        session.is_stopped = True
+
+    residual_len = len(session.live_audio_buffer)
+    if residual_len > 16000:
+        print(f"Residual live block queued: {residual_len} bytes")
+        residual_copy = bytes(session.live_audio_buffer)
+        session.live_audio_buffer.clear()
+        await session.stt_queue.put(residual_copy)
+    else:
+        print(f"Residual live block skipped (too short: {residual_len} bytes)")
+
     try:
         await update_db_meeting_status(meeting_id, "UPLOAD_FINALIZING")
     except InvalidStateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Verify if all chunks are uploaded (0 to max_chunk_index)
-    async with db_lock:
-        max_idx = meeting["max_chunk_index"]
-        missing_chunks = []
-        for i in range(max_idx + 1):
-            if i not in meeting["chunks"]:
-                missing_chunks.append(i)
+    try:
+        print("Waiting for STT queue to drain...")
+        await asyncio.wait_for(session.stt_queue.join(), timeout=60.0)
+        print("STT queue drained successfully")
+    except asyncio.TimeoutError:
+        print("Timeout waiting for STT queue to drain. Proceeding with full WAV generation anyway.")
 
-    if not missing_chunks:
-        # Transition to PROCESSING
+    if session.worker_task and not session.worker_task.done():
+        session.worker_task.cancel()
+        try:
+            await session.worker_task
+        except asyncio.CancelledError:
+            pass
+        print(f"STT worker stopped: {meeting_id}")
+
+    final_pcm_size = len(session.full_audio_buffer)
+    print(f"Final PCM size: {final_pcm_size} bytes")
+    
+    if final_pcm_size == 0:
+        raise HTTPException(status_code=400, detail="Cannot save audio: full audio buffer is empty")
+        
+    import struct
+    sample_rate = 16000
+    channels = 1
+    bit_depth = 16
+    byte_rate = (sample_rate * channels * bit_depth) // 8
+    block_align = (channels * bit_depth) // 8
+
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        36 + final_pcm_size,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,            # Audio format (1 = PCM)
+        channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bit_depth,
+        b'data',
+        final_pcm_size
+    )
+    wav_audio_data = header + session.full_audio_buffer
+    final_wav_size = len(wav_audio_data)
+    print(f"Final WAV size: {final_wav_size} bytes")
+    
+    if final_wav_size <= 44:
+        raise HTTPException(status_code=400, detail="Generated WAV is invalid or empty")
+
+    try:
+        print("R2 upload started")
+        final_path = await storage_provider.upload_full_audio(meeting_id, wav_audio_data)
+        print(f"R2 upload completed: {final_path}")
+    except Exception as upload_err:
+        print(f"WAV upload failed: {upload_err}")
+        try:
+            await update_db_meeting_status(meeting_id, "FAILED")
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=502,
+            detail=f"WAV upload failed: {str(upload_err)}"
+        )
+
+    try:
         await update_db_meeting_status(meeting_id, "PROCESSING")
         
-        # Spawn serverless GPU task on Modal.com asynchronously
-        try:
-            import modal
-
-            print("Modal function resolved: process_meeting_async")
-
-            remote_fn = modal.Function.from_name(
-                "ai-meeting-processor",
-                "process_meeting_async"
-            )
-
-            call = await remote_fn.spawn.aio(meeting_id)
-
-            call_id = getattr(call, "object_id", None)
-            print(f"Modal job spawned: {call_id}")
-        except Exception as e:
-            print(f"Modal spawn failed: {e}")
-            raise HTTPException(
-                status_code=502,
-                detail="Failed to start meeting post-processing"
-            )
+        import modal
+        print("Modal function resolved: process_meeting_async")
+        remote_fn = modal.Function.from_name("ai-meeting-processor", "process_meeting_async")
+        
+        call = await remote_fn.spawn.aio(meeting_id)
+        call_id = getattr(call, "object_id", None)
+        print(f"Modal job spawned: {call_id}")
+        
+        async with sessions_lock:
+            meeting_sessions.pop(meeting_id, None)
 
         return {
             "status": "PROCESSING",
             "message": "Встреча отправлена на ИИ-обработку",
             "call_id": call_id
         }
-    else:
-        # Remain in UPLOAD_FINALIZING and return list of missing chunk indices for client sync
-        return {
-            "status": "UPLOAD_FINALIZING",
-            "message": "Some chunks are missing. Awaiting client synchronization.",
-            "missing_chunks": missing_chunks
-        }
+    except Exception as e:
+        print(f"Modal spawn failed: {e}")
+        try:
+            await update_db_meeting_status(meeting_id, "FAILED")
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to start meeting post-processing"
+        )
 
 
 @router.delete("/meetings/{meeting_id}/audio")
