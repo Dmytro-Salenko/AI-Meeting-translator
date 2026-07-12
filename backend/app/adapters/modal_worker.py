@@ -29,7 +29,7 @@ class ModalGPUWorkerAdapter:
         logger.info(f"Looking up remote Modal function '{self.function_name}' in app '{self.app_name}'...")
         try:
             # Look up the deployed Modal function from server
-            remote_fn = modal.Function.lookup(self.app_name, self.function_name)
+            remote_fn = modal.Function.from_name(self.app_name, self.function_name)
             
             logger.info(f"Triggering remote Modal execution for meeting {meeting_id} on GPU...")
             # Execute remote function synchronously/asynchronously inside worker thread
