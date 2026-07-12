@@ -49,6 +49,7 @@ class ModalLiveSTTProvider(BaseSTTProvider):
     async def transcribe_stream_chunk(self, audio_chunk: bytes) -> str:
         import struct
         import modal
+        import time
 
         # Wrap raw PCM 16kHz mono 16-bit to WAV
         sample_rate = 16000
@@ -75,11 +76,21 @@ class ModalLiveSTTProvider(BaseSTTProvider):
         )
         wav_data = header + audio_chunk
 
-        print("Calling remote Modal live transcription...")
+        print("Modal live request started")
+        start_time = time.time()
         try:
-            remote_fn = modal.Function.lookup("ai-meeting-processor", "transcribe_live_chunk")
-            # Invoke remote function synchronously
-            transcript = remote_fn.remote(wav_data)
+            # Resolve class remotely
+            cls = modal.Cls.lookup("ai-meeting-processor", "LiveTranscriber")
+            # Invoke remote method asynchronously
+            transcript = await cls().transcribe.remote.aio(wav_data)
+            
+            duration = time.time() - start_time
+            print(f"Modal transcription completed in {duration:.3f}s")
+            
+            if not transcript:
+                print("Empty transcript skipped")
+                return ""
+                
             print(f"Modal live transcript received: '{transcript}'")
             return transcript
         except Exception as e:

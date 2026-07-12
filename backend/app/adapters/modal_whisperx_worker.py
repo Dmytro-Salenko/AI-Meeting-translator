@@ -242,44 +242,48 @@ def process_meeting_async(meeting_id: str):
     return {"status": "success"}
 
 
-@app.function(
+@app.cls(
     gpu="T4",
     timeout=60
 )
-def transcribe_live_chunk(audio_data: bytes) -> str:
-    """
-    Fast remote GPU function to transcribe a short 3-second audio WAV buffer
-    using the base Whisper model via faster-whisper/whisperx.
-    """
-    import tempfile
-    import os
-    import torch
-    import whisperx
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp.write(audio_data)
-        tmp_path = tmp.name
-
-    try:
-        # Load audio array
-        audio = whisperx.load_audio(tmp_path)
-        
+class LiveTranscriber:
+    @modal.enter()
+    def load_model(self):
+        import whisperx
+        import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         compute_type = "float16" if torch.cuda.is_available() else "float32"
+        print("Modal model loaded: Initializing 'base' WhisperX model...")
+        self.model = whisperx.load_model("base", device, compute_type=compute_type)
 
-        # Load base model for low latency
-        model = whisperx.load_model("base", device, compute_type=compute_type, language="ru")
-        
-        # Transcribe array
-        result = model.transcribe(audio, batch_size=1)
-        
-        # Extract text
-        text = ""
-        if result and "segments" in result:
-            text = " ".join([seg["text"] for seg in result["segments"]]).strip()
+    @modal.method()
+    def transcribe(self, audio_data: bytes) -> str:
+        """
+        Fast remote GPU method to transcribe a short 3-second audio WAV buffer
+        using the base Whisper model cached in container memory.
+        """
+        import tempfile
+        import os
+        import whisperx
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(audio_data)
+            tmp_path = tmp.name
+
+        try:
+            # Load audio array
+            audio = whisperx.load_audio(tmp_path)
             
-        print(f"Transcribed live chunk: '{text}'")
-        return text
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            # Transcribe array
+            result = self.model.transcribe(audio, batch_size=1)
+            
+            # Extract text
+            text = ""
+            if result and "segments" in result:
+                text = " ".join([seg["text"] for seg in result["segments"]]).strip()
+                
+            print(f"Modal transcription completed: '{text}'")
+            return text
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
