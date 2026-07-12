@@ -14,6 +14,7 @@ class OpenRouterTranslationProvider(BaseTranslationProvider):
         self.api_key = settings.OPENROUTER_API_KEY
         self.model = settings.OPENROUTER_TRANSLATION_MODEL
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+        self.client = httpx.AsyncClient(timeout=10.0)
 
     async def translate_text(
         self, 
@@ -31,8 +32,9 @@ class OpenRouterTranslationProvider(BaseTranslationProvider):
 
         # Construct the system message specifying strict translation constraints
         system_prompt = (
-            "You are a professional real-time interpreter.\n"
+            f"You are a professional real-time translator translating to target language '{target_lang}'.\n"
             "Translate text exactly.\n"
+            "If the input is already in the target language, return it unchanged.\n"
             "Do not summarize.\n"
             "Do not explain.\n"
             "Do not improve grammar.\n"
@@ -43,13 +45,10 @@ class OpenRouterTranslationProvider(BaseTranslationProvider):
             "Nothing else."
         )
 
-        # Target language description to make it extremely clear to the model
-        user_message = f"Translate the following text to target language '{target_lang}'. Do not wrap in quotes or add comments.\n\nText: {text}"
+        user_message = f"Text: {text}"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "https://ai-meeting-translator.com",
-            "X-Title": "AI Meeting Translator",
             "Content-Type": "application/json"
         }
 
@@ -61,30 +60,29 @@ class OpenRouterTranslationProvider(BaseTranslationProvider):
             ],
             "temperature": 0.0,
             "top_p": 1.0,
-            "max_tokens": 512
+            "max_tokens": 128
         }
 
         start_time = time.time()
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(self.base_url, headers=headers, json=payload)
+            response = await self.client.post(self.base_url, headers=headers, json=payload)
+            
+            if response.status_code != 200:
+                raise Exception(f"OpenRouter API error: {response.status_code} - {response.text}")
                 
-                if response.status_code != 200:
-                    raise Exception(f"OpenRouter API error: {response.status_code} - {response.text}")
-                    
-                result = response.json()
-                translated_text = result["choices"][0]["message"]["content"].strip()
-                
-                # Strip potential markdown code block backticks if LLM mistakenly added them
-                if translated_text.startswith("```") and translated_text.endswith("```"):
-                    lines = translated_text.splitlines()
-                    if len(lines) >= 3:
-                        translated_text = "\n".join(lines[1:-1]).strip()
+            result = response.json()
+            translated_text = result["choices"][0]["message"]["content"].strip()
+            
+            # Strip potential markdown code block backticks if LLM mistakenly added them
+            if translated_text.startswith("```") and translated_text.endswith("```"):
+                lines = translated_text.splitlines()
+                if len(lines) >= 3:
+                    translated_text = "\n".join(lines[1:-1]).strip()
 
-                duration_ms = int((time.time() - start_time) * 1000)
-                print(f"Translation completed in {duration_ms} ms")
-                return translated_text
+            duration_ms = int((time.time() - start_time) * 1000)
+            print(f"Translation completed in {duration_ms} ms")
+            return translated_text
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             print(f"Translation failed after {duration_ms} ms: {e}")
-            raise e
+            raise
