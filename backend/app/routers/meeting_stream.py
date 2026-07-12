@@ -79,10 +79,10 @@ class ModalLiveSTTProvider(BaseSTTProvider):
         print("Modal live request started")
         start_time = time.time()
         try:
-            # Resolve class remotely
-            cls = modal.Cls.lookup("ai-meeting-processor", "LiveTranscriber")
+            # Resolve remote class method function
+            remote_fn = modal.Function.lookup("ai-meeting-processor", "LiveTranscriber.transcribe")
             # Invoke remote method asynchronously
-            transcript = await cls().transcribe.remote.aio(wav_data)
+            transcript = await remote_fn.aio(wav_data)
             
             duration = time.time() - start_time
             print(f"Modal transcription completed in {duration:.3f}s")
