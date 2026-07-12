@@ -367,15 +367,30 @@ async def stop_meeting(
         
         # Spawn serverless GPU task on Modal.com asynchronously
         try:
-            from app.adapters.modal_whisperx_worker import process_meeting_async
-            process_meeting_async.spawn(meeting_id)
+            import modal
+
+            print("Modal function resolved: process_meeting_async")
+
+            remote_fn = modal.Function.from_name(
+                "ai-meeting-processor",
+                "process_meeting_async"
+            )
+
+            call = await remote_fn.spawn.aio(meeting_id)
+
+            call_id = getattr(call, "object_id", None)
+            print(f"Modal job spawned: {call_id}")
         except Exception as e:
-            # Fallback if Modal is not configured or in testing environment
-            print(f"Modal spawn skipped/failed: {e}")
+            print(f"Modal spawn failed: {e}")
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to start meeting post-processing"
+            )
 
         return {
             "status": "PROCESSING",
-            "message": "Встреча отправлена на ИИ-обработку"
+            "message": "Встреча отправлена на ИИ-обработку",
+            "call_id": call_id
         }
     else:
         # Remain in UPLOAD_FINALIZING and return list of missing chunk indices for client sync
