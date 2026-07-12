@@ -7,6 +7,8 @@ app_image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg")
     .pip_install(
+        "numpy==1.26.4",
+        "transformers==4.39.3",
         "whisperx==3.1.1",
         "supabase==2.3.0",
         "boto3==1.34.0",
@@ -249,12 +251,12 @@ def process_meeting_async(meeting_id: str):
 class LiveTranscriber:
     @modal.enter()
     def load_model(self):
-        import whisperx
+        from faster_whisper import WhisperModel
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         compute_type = "float16" if torch.cuda.is_available() else "float32"
-        print("Modal model loaded: Initializing 'base' WhisperX model...")
-        self.model = whisperx.load_model("base", device, compute_type=compute_type)
+        print("Modal model loaded: Initializing 'base' faster-whisper model...")
+        self.model = WhisperModel("base", device=device, compute_type=compute_type)
 
     @modal.method()
     def transcribe(self, audio_data: bytes) -> str:
@@ -264,24 +266,18 @@ class LiveTranscriber:
         """
         import tempfile
         import os
-        import whisperx
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp.write(audio_data)
             tmp_path = tmp.name
 
         try:
-            # Load audio array
-            audio = whisperx.load_audio(tmp_path)
-            
-            # Transcribe array
-            result = self.model.transcribe(audio, batch_size=1)
+            # Transcribe audio file using faster-whisper
+            segments, info = self.model.transcribe(tmp_path)
             
             # Extract text
-            text = ""
-            if result and "segments" in result:
-                text = " ".join([seg["text"] for seg in result["segments"]]).strip()
-                
+            text = " ".join([seg.text for seg in segments]).strip()
+            
             print(f"Modal transcription completed: '{text}'")
             return text
         finally:
