@@ -6,6 +6,7 @@ from app.core.interfaces.summary import BaseSummaryProvider
 # Concrete adapter imports
 from app.adapters.s3_storage import S3StorageProvider
 from app.adapters.deepl_translation import DeepLTranslationProvider, GoogleTranslationProvider
+from app.adapters.openrouter_translation import OpenRouterTranslationProvider
 from app.adapters.openrouter_summary import OpenRouterSummaryProvider, MockSummaryProvider
 
 # In-memory singletons for efficiency
@@ -33,6 +34,8 @@ def get_translation_provider() -> BaseTranslationProvider:
             _translation_provider = DeepLTranslationProvider()
         elif settings.TRANSLATION_PROVIDER == "google":
             _translation_provider = GoogleTranslationProvider()
+        elif settings.TRANSLATION_PROVIDER == "openrouter":
+            _translation_provider = OpenRouterTranslationProvider()
         else:
             from app.routers.meeting_stream import MockTranslationProvider
             _translation_provider = MockTranslationProvider()

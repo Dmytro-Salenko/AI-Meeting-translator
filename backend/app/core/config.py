@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Active Providers Selection
     STORAGE_PROVIDER: Literal["r2", "local"] = Field(default="r2")
-    TRANSLATION_PROVIDER: Literal["deepl", "google", "llm"] = Field(default="deepl")
+    TRANSLATION_PROVIDER: Literal["deepl", "google", "openrouter", "llm"] = Field(default="openrouter")
     STT_PROVIDER: Literal["faster_whisper", "whisper_live"] = Field(default="faster_whisper")
     SUMMARY_PROVIDER: Literal["openrouter", "openai", "gemini"] = Field(default="openrouter")
 
@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # OpenRouter / LLM Summary Settings
     OPENROUTER_API_KEY: str = Field(default="")
     OPENROUTER_MODEL: str = Field(default="deepseek/deepseek-chat")
+    OPENROUTER_TRANSLATION_MODEL: str = Field(default="meta-llama/llama-3.1-8b-instruct")
 
     # GPU Worker Configuration
     MODAL_WORKER_URL: str = Field(default="")
