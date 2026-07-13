@@ -36,9 +36,26 @@ def process_meeting_async(meeting_id: str):
     print(f"🚀 ИИ-Воркер запущен. Начинаем обработку встречи: {meeting_id}")
     
     # Подключаемся к Supabase и Cloudflare R2 внутри видеокарты
-    supabase_url = os.environ["SUPABASE_URL"]
-    supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    supabase: Client = create_client(supabase_url, supabase_key)
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+
+    if not supabase_url:
+        raise ValueError("Missing Modal secret: SUPABASE_URL")
+
+    if not supabase_key:
+        raise ValueError("Missing Modal secret: SUPABASE_SERVICE_ROLE_KEY")
+
+    print("Supabase credentials found")
+
+    try:
+        supabase: Client = create_client(
+            supabase_url,
+            supabase_key
+        )
+        print("Supabase client initialized")
+    except Exception as e:
+        print(f"Failed to initialize Supabase client: {type(e).__name__}")
+        raise
     
     r2_bucket = os.environ["R2_BUCKET_NAME"]
     s3_client = boto3.client(
